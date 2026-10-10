@@ -1,0 +1,68 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{listings}
+\usepackage{xcolor}
+
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codepurple}{rgb}{0.58,0.82,0.82}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+
+\lstdefinestyle{mystyle}{
+    backgroundcolor=\color{backcolour},   
+    commentstyle=\color{codegreen},
+    keywordstyle=\color{magenta},
+    numberstyle=\tiny\color{codegray},
+    stringstyle=\color{codepurple},
+    basicstyle=\ttfamily\footnotesize,
+    breakatwhitespace=false,         
+    breaklines=true,                 
+    captionpos=b,                    
+    keepspaces=true,                 
+    numbers=left,                    
+    numbersep=5pt,                  
+    showspaces=false,                
+    showstringspaces=false,
+    showtabs=false,                  
+    tabsize=2
+}
+\lstset{style=mystyle}
+
+\title{\textbf{GenreGenie: Real-Time Movie Recommendation Engine via TMDB Streaming Pipelines \& Collaborative User Modeling}\\ \large AI Project Deliverable 1: Problem Definition \& Data Foundations}
+\author{\textbf{Student IDs}: l242519 \& l242590 \\ Track A: Application Development / R\&D}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+This report outlines Deliverable 1 for the \textbf{GenreGenie} project. GenreGenie addresses choice overload on streaming platforms by fusing live metadata ingestion from The Movie Database (TMDB) REST API with collaborative user interaction filtering models. We detail the domain problem, justify the necessity of Machine Learning over heuristic-based algorithms, document our end-to-end Python data collection and ETL pipeline, and define our feature strategy alongside initial Exploratory Data Analysis (EDA).
+\end{abstract}
+
+\section{Phase 1: Problem Definition}
+
+\subsection{Problem Statement}
+In the modern digital entertainment ecosystem, users face choice overload due to thousands of movies available across platforms. Standard keyword searches or static top-chart listings fail to adapt to dynamic user tastes. Streaming telemetry generates rapid, high-dimensional user interaction streams (e.g., watch ratios, ratings, skips). \textbf{GenreGenie} transforms raw movie streaming telemetry into dynamic, personalized recommendations by merging TMDB's live metadata API with collaborative user behavior modeling.
+
+\subsection{Target Audience}
+\begin{itemize}
+    \item \textbf{End Consumers}: Viewers who experience choice paralysis and require hyper-personalized content feeds.
+    \item \textbf{Streaming Service Developers}: Platform operators seeking hybrid recommender architecture (combining real-time API metadata enrichment with collaborative interaction matrix models).
+\end{itemize}
+
+\subsection{AI Justification}
+Traditional rule-based programming (e.g., IF genre == 'Action' THEN recommend top-rated Action movie) falls short due to:
+\begin{enumerate}
+    \item \textbf{High Dimensionality \& Latent Patterns}: Human viewing behavior depends on latent interactions (e.g., preference for specific director-actor combinations or temporal mood shifts) that cannot be hardcoded into deterministic rule sets.
+    \item \textbf{Scalability}: Rule-based trees scale non-linearly with $O(N \cdot M)$ complexity as users ($N$) and items ($M$) grow, rendering static conditional logic obsolete.
+    \item \textbf{Matrix Factorization \& Collaborative Patterns}: Machine Learning approaches (e.g., Matrix Factorization / Neural Collaborative Filtering) optimize continuous loss functions over high-dimensional sparse user-item interaction matrices:
+    \begin{equation}
+        \min_{P, Q} \sum_{(u,i) \in R} \left( r_{ui} - \mathbf{p}_u^T \mathbf{q}_i \right)^2 + \lambda \left( \|\mathbf{p}_u\|^2 + \|\mathbf{q}_i\|^2 \right)
+    \end{equation}
+    where $P$ and $Q$ represent latent embeddings for users and items respectively.

@@ -1,0 +1,14 @@
+{
+    "files.exclude": {
+        "**/.git": true,
+        "**/.svn": true,
+        "**/.hg": true,
+        "**/.jj": true,
+        "**/.DS_Store": true,
+        "**/Thumbs.db": true,
+        "**/c:\\assignment\\GenreGenie\\docs\\report.aux": true,
+        "**/c:\\assignment\\GenreGenie\\docs\\report.log": true,
+        "**/c:\\assignment\\GenreGenie\\docs\\report.gz": true,
+        "**/c:\\assignment\\GenreGenie\\docs\\report.out": true
+    }
+}
