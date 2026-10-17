@@ -6,17 +6,53 @@
 \usepackage{booktabs}
 \usepackage{hyperref}
 \usepackage{listings}
-\usepackage{xcolor}
+\usepackage[table]{xcolor}
+\usepackage{sectsty}
+\usepackage{microtype}
+\usepackage{enumitem}
+\usepackage{caption}
+\usepackage{float}
+\usepackage{setspace}
+\usepackage{pmboxdraw}
+\usepackage[most]{tcolorbox}
 
-\definecolor{codegreen}{rgb}{0,0.6,0}
-\definecolor{codegray}{rgb}{0.5,0.5,0.5}
-\definecolor{codepurple}{rgb}{0.58,0.82,0.82}
-\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+% ---- Purple theme (sampled from report.pdf) ----
+\definecolor{purpleDark}{RGB}{74,46,93}      % headings, title, rules
+\definecolor{purpleMid}{RGB}{142,91,154}     % accents, links
+\definecolor{purpleGray}{RGB}{120,110,130}   % muted text
+\definecolor{purpleLight}{RGB}{250,245,252}  % code background
+
+\definecolor{codegreen}{RGB}{142,91,154}
+\definecolor{codegray}{RGB}{120,110,130}
+\definecolor{codepurple}{RGB}{96,70,112}
+\definecolor{backcolour}{RGB}{250,245,252}
+
+% ---- Spacing & layout polish ----
+\setstretch{1.1}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.6em}
+\setlist{itemsep=2pt, topsep=4pt, parsep=0pt}
+\setlength{\abovecaptionskip}{6pt}
+\captionsetup{font=small, labelfont={bf,color=purpleDark}, labelsep=period}
+\renewcommand{\arraystretch}{1.25}
+
+% ---- Boxed abstract (matches Executive Summary style in report.pdf) ----
+\renewenvironment{abstract}{%
+\begin{tcolorbox}[enhanced, breakable, arc=4pt, boxrule=0.8pt,
+  colback=purpleLight, colframe=purpleDark,
+  title=Abstract, fonttitle=\sffamily\bfseries\small,
+  coltitle=white, colbacktitle=purpleDark,
+  left=8pt, right=8pt, top=6pt, bottom=6pt,
+  before skip=10pt, after skip=14pt]\small
+}{\end{tcolorbox}}
+
+\hypersetup{colorlinks=true, linkcolor=purpleMid, citecolor=purpleMid, urlcolor=purpleMid}
+\allsectionsfont{\color{purpleDark}}
 
 \lstdefinestyle{mystyle}{
     backgroundcolor=\color{backcolour},   
     commentstyle=\color{codegreen},
-    keywordstyle=\color{magenta},
+    keywordstyle=\color{purpleDark},
     numberstyle=\tiny\color{codegray},
     stringstyle=\color{codepurple},
     basicstyle=\ttfamily\footnotesize,
@@ -29,17 +65,23 @@
     showspaces=false,                
     showstringspaces=false,
     showtabs=false,                  
-    tabsize=2
+    tabsize=2,
+    frame=single,
+    rulecolor=\color{purpleMid},
+    framesep=6pt,
+    aboveskip=8pt,
+    belowskip=8pt
 }
 \lstset{style=mystyle}
 
-\title{\textbf{GenreGenie: Real-Time Movie Recommendation Engine via TMDB Streaming Pipelines \& Collaborative User Modeling}\\ \large AI Project Deliverable 1: Problem Definition \& Data Foundations}
+\title{\color{purpleDark}\textbf{GenreGenie: Real-Time Movie Recommendation Engine via TMDB Streaming Pipelines \& Collaborative User Modeling}\\ \large\color{purpleGray} AI Project Deliverable 1: Problem Definition \& Data Foundations}
 \author{\textbf{Student IDs}: l242519 \& l242590 \\ Track A: Application Development / R\&D}
 \date{\today}
 
 \begin{document}
 
 \maketitle
+\vspace{-0.5em}
 
 \begin{abstract}
 This report outlines Deliverable 1 for the \textbf{GenreGenie} project. GenreGenie addresses choice overload on streaming platforms by fusing live metadata ingestion from The Movie Database (TMDB) REST API with collaborative user interaction filtering models. We detail the domain problem, justify the necessity of Machine Learning over heuristic-based algorithms, document our end-to-end Python data collection and ETL pipeline, and define our feature strategy alongside initial Exploratory Data Analysis (EDA).
@@ -173,7 +215,7 @@ Our feature engineering pipeline (\texttt{03\_feature\_strategy.py}) implements 
 \subsection{Exploratory Data Analysis (EDA)}
 
 \subsubsection{Rating Distribution}
-\begin{figure}[h]
+\begin{figure}[H]
     \centering
     \includegraphics[width=0.75\textwidth]{figures/rating_distribution.png}
     \caption{Distribution of user ratings shows positive skew (users tend to rate movies they like)}
@@ -183,7 +225,7 @@ Our feature engineering pipeline (\texttt{03\_feature\_strategy.py}) implements 
 Figure \ref{fig:rating_dist} reveals that ratings follow a left-skewed distribution with a mean of approximately 3.5/5.0. This positive bias indicates users preferentially rate content they enjoy, introducing implicit selection bias into our collaborative filtering model.
 
 \subsubsection{Genre Distribution}
-\begin{figure}[h]
+\begin{figure}[H]
     \centering
     \includegraphics[width=0.75\textwidth]{figures/genre_distribution.png}
     \caption{Drama and Comedy dominate the dataset, indicating potential class imbalance}
@@ -193,7 +235,7 @@ Figure \ref{fig:rating_dist} reveals that ratings follow a left-skewed distribut
 The genre distribution (Figure \ref{fig:genre_dist}) shows strong imbalance, with Drama and Comedy comprising $>$40\% of entries. This necessitates stratified sampling or class weighting in future model training.
 
 \subsubsection{User Activity Patterns}
-\begin{figure}[h]
+\begin{figure}[H]
     \centering
     \includegraphics[width=0.75\textwidth]{figures/user_activity.png}
     \caption{User activity follows power-law distribution (few highly active users, many sparse users)}
@@ -203,7 +245,7 @@ The genre distribution (Figure \ref{fig:genre_dist}) shows strong imbalance, wit
 Figure \ref{fig:user_activity} demonstrates a classic long-tail distribution: a small fraction of users contribute the majority of ratings, while most users have sparse interaction histories. This sparsity challenge motivates hybrid recommendation approaches.
 
 \subsubsection{Feature Correlations}
-\begin{figure}[h]
+\begin{figure}[H]
     \centering
     \includegraphics[width=0.75\textwidth]{figures/correlation_matrix.png}
     \caption{Correlation heatmap reveals independence between key features (low multicollinearity)}
@@ -213,7 +255,7 @@ Figure \ref{fig:user_activity} demonstrates a classic long-tail distribution: a 
 The correlation analysis (Figure \ref{fig:correlation}) shows weak correlations between engineered features ($|r| < 0.3$), indicating minimal redundancy and validating feature independence for model training.
 
 \subsubsection{Popularity vs. Quality}
-\begin{figure}[h]
+\begin{figure}[H]
     \centering
     \includegraphics[width=0.75\textwidth]{figures/popularity_vs_rating.png}
     \caption{Weak correlation between popularity (rating count) and quality (average rating)}
@@ -240,8 +282,9 @@ Figure \ref{fig:pop_vs_rating} reveals that popular movies (high rating counts) 
 \end{itemize}
 
 \subsection{Dataset Statistics (Post-Processing)}
-\begin{table}[h]
+\begin{table}[H]
 \centering
+\arrayrulecolor{purpleDark}
 \begin{tabular}{@{}lc@{}}
 \toprule
 \textbf{Metric} & \textbf{Value} \\ \midrule
