@@ -120,8 +120,11 @@ def generate_collection_report():
     print("✓ Ready for Phase 2: Data Cleaning\n")
 
 if __name__ == "__main__":
-    # Change to script directory
-    os.chdir(os.path.dirname(os.path.abspath(__file__)))
+    # Change to project root directory
+    os.chdir(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    
+    # Set path to raw data
+    os.chdir('data/raw')
     
     # Load and analyze MovieLens data
     movies_df, ratings_df, links_df = load_movielens_data()

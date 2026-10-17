@@ -21,14 +21,14 @@ def load_cleaned_data():
     print("Loading cleaned data...")
     
     # Check if cleaned files exist, otherwise use original
-    if os.path.exists('movies_cleaned.csv'):
-        movies_df = pd.read_csv('movies_cleaned.csv')
-        ratings_df = pd.read_csv('ratings_cleaned.csv')
+    if os.path.exists('data/cleaned/movies_cleaned.csv'):
+        movies_df = pd.read_csv('data/cleaned/movies_cleaned.csv')
+        ratings_df = pd.read_csv('data/cleaned/ratings_cleaned.csv')
     else:
         print("⚠ Cleaned files not found. Run 02_data_cleaning.py first.")
         print("Loading original files instead...")
-        movies_df = pd.read_csv('movies.csv')
-        ratings_df = pd.read_csv('ratings.csv')
+        movies_df = pd.read_csv('data/raw/movies.csv')
+        ratings_df = pd.read_csv('data/raw/ratings.csv')
     
     return movies_df, ratings_df
 
@@ -103,7 +103,7 @@ def generate_eda_plots(movies_df, ratings_df, user_features):
     print("\n=== Generating EDA Visualizations ===")
     
     # Create output directory for figures
-    os.makedirs('../docs/figures', exist_ok=True)
+    os.makedirs('docs/figures', exist_ok=True)
     
     # 1. Rating Distribution
     plt.figure(figsize=(10, 6))
@@ -112,7 +112,7 @@ def generate_eda_plots(movies_df, ratings_df, user_features):
     plt.xlabel('Rating', fontsize=12)
     plt.ylabel('Frequency', fontsize=12)
     plt.grid(axis='y', alpha=0.5)
-    plt.savefig('../docs/figures/rating_distribution.png', dpi=300, bbox_inches='tight')
+    plt.savefig('docs/figures/rating_distribution.png', dpi=300, bbox_inches='tight')
     print("✓ Saved: rating_distribution.png")
     plt.close()
     
@@ -125,7 +125,7 @@ def generate_eda_plots(movies_df, ratings_df, user_features):
     plt.ylabel('Count', fontsize=12)
     plt.xticks(rotation=45, ha='right')
     plt.tight_layout()
-    plt.savefig('../docs/figures/genre_distribution.png', dpi=300, bbox_inches='tight')
+    plt.savefig('docs/figures/genre_distribution.png', dpi=300, bbox_inches='tight')
     print("✓ Saved: genre_distribution.png")
     plt.close()
     
@@ -137,7 +137,7 @@ def generate_eda_plots(movies_df, ratings_df, user_features):
     plt.ylabel('Number of Users', fontsize=12)
     plt.xlim(0, user_features['rating_count'].quantile(0.95))  # Focus on 95th percentile
     plt.grid(axis='y', alpha=0.5)
-    plt.savefig('../docs/figures/user_activity.png', dpi=300, bbox_inches='tight')
+    plt.savefig('docs/figures/user_activity.png', dpi=300, bbox_inches='tight')
     print("✓ Saved: user_activity.png")
     plt.close()
     
@@ -149,7 +149,7 @@ def generate_eda_plots(movies_df, ratings_df, user_features):
                 square=True, linewidths=1, cbar_kws={"shrink": 0.8})
     plt.title('Feature Correlation Matrix (Movies)', fontsize=16, fontweight='bold')
     plt.tight_layout()
-    plt.savefig('../docs/figures/correlation_matrix.png', dpi=300, bbox_inches='tight')
+    plt.savefig('docs/figures/correlation_matrix.png', dpi=300, bbox_inches='tight')
     print("✓ Saved: correlation_matrix.png")
     plt.close()
     
@@ -162,11 +162,11 @@ def generate_eda_plots(movies_df, ratings_df, user_features):
     plt.ylabel('Average Rating', fontsize=12)
     plt.xlim(0, sample['num_ratings'].quantile(0.95))
     plt.grid(alpha=0.3)
-    plt.savefig('../docs/figures/popularity_vs_rating.png', dpi=300, bbox_inches='tight')
+    plt.savefig('docs/figures/popularity_vs_rating.png', dpi=300, bbox_inches='tight')
     print("✓ Saved: popularity_vs_rating.png")
     plt.close()
     
-    print("\n✓ All EDA plots saved to ../docs/figures/")
+    print("\n✓ All EDA plots saved to docs/figures/")
 
 def save_engineered_features(movies_df, user_features):
     """
@@ -174,18 +174,20 @@ def save_engineered_features(movies_df, user_features):
     """
     print("\n=== Saving Engineered Features ===")
     
-    movies_df.to_csv('movies_features.csv', index=False)
-    user_features.to_csv('user_features.csv', index=False)
+    movies_df.to_csv('data/processed/movies_features.csv', index=False)
+    user_features.to_csv('data/processed/user_features.csv', index=False)
     
-    print("✓ Saved: movies_features.csv")
-    print("✓ Saved: user_features.csv")
+    print("✓ Saved to data/processed/:")
+    print("  - movies_features.csv")
+    print("  - user_features.csv")
 
 def main():
     """
     Main feature engineering pipeline
     """
-    # Change to script directory
-    os.chdir(os.path.dirname(os.path.abspath(__file__)))
+    # Change to project root directory
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    os.chdir(project_root)
     
     print("="*50)
     print("Starting Feature Engineering & EDA...")

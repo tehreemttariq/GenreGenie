@@ -12,4 +12,4 @@ __pycache__/
 
 # Large data files
 *.json
-!data_scripts/full_load_2005_2014.json
+!data/raw/full_load_2005_2014.json

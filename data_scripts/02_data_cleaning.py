@@ -115,17 +115,18 @@ def main():
     """
     Main cleaning pipeline
     """
-    # Change to script directory
-    os.chdir(os.path.dirname(os.path.abspath(__file__)))
+    # Change to project root directory
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    os.chdir(project_root)
     
     print("="*50)
     print("Starting Data Cleaning Process...")
     print("="*50)
     
     # Load raw data
-    movies_df = pd.read_csv('movies.csv')
-    ratings_df = pd.read_csv('ratings.csv')
-    links_df = pd.read_csv('links.csv')
+    movies_df = pd.read_csv('data/raw/movies.csv')
+    ratings_df = pd.read_csv('data/raw/ratings.csv')
+    links_df = pd.read_csv('data/raw/links.csv')
     
     # Clean each dataset
     movies_clean = clean_movies_data(movies_df)
@@ -133,11 +134,11 @@ def main():
     links_clean = clean_links_data(links_df)
     
     # Save cleaned data
-    movies_clean.to_csv('movies_cleaned.csv', index=False)
-    ratings_clean.to_csv('ratings_cleaned.csv', index=False)
-    links_clean.to_csv('links_cleaned.csv', index=False)
+    movies_clean.to_csv('data/cleaned/movies_cleaned.csv', index=False)
+    ratings_clean.to_csv('data/cleaned/ratings_cleaned.csv', index=False)
+    links_clean.to_csv('data/cleaned/links_cleaned.csv', index=False)
     
-    print("\n✓ Cleaned datasets saved:")
+    print("\n✓ Cleaned datasets saved to data/cleaned/:")
     print("  - movies_cleaned.csv")
     print("  - ratings_cleaned.csv")
     print("  - links_cleaned.csv")
