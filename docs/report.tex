@@ -282,13 +282,32 @@ All code, datasets, and documentation are available at: \\
 \textbf{Repository Structure:}
 \begin{verbatim}
 GenreGenie/
+├── data/
+│   ├── raw/                  # Original datasets
+│   │   ├── movies.csv
+│   │   ├── ratings.csv
+│   │   └── links.csv
+│   ├── cleaned/              # Cleaned datasets
+│   │   ├── movies_cleaned.csv
+│   │   ├── ratings_cleaned.csv
+│   │   └── links_cleaned.csv
+│   └── processed/            # Engineered features
+│       ├── movies_features.csv
+│       └── user_features.csv
 ├── data_scripts/
 │   ├── 01_tmdb_collector.py
 │   ├── 02_data_cleaning.py
-│   └── 03_feature_strategy.py
+│   ├── 03_feature_strategy.py
+│   ├── README.md
+│   └── requirements.txt
 ├── docs/
 │   ├── report.tex
-│   └── figures/
+│   └── figures/              # EDA visualizations
+│       ├── rating_distribution.png
+│       ├── genre_distribution.png
+│       ├── user_activity.png
+│       ├── correlation_matrix.png
+│       └── popularity_vs_rating.png
 └── README.md
 \end{verbatim}
 
