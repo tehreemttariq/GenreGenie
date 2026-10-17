@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.pyc
+
+# IDE
+.vscode/
+
+# LaTeX
+*.aux
+*.log
+*.out
+
+# Large data files
+*.json
+!data_scripts/full_load_2005_2014.json

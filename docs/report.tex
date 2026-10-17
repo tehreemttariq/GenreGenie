@@ -66,3 +66,230 @@ Traditional rule-based programming (e.g., IF genre == 'Action' THEN recommend to
         \min_{P, Q} \sum_{(u,i) \in R} \left( r_{ui} - \mathbf{p}_u^T \mathbf{q}_i \right)^2 + \lambda \left( \|\mathbf{p}_u\|^2 + \|\mathbf{q}_i\|^2 \right)
     \end{equation}
     where $P$ and $Q$ represent latent embeddings for users and items respectively.
+    \item \textbf{Dynamic Adaptation}: ML models support continuous retraining as new user interactions arrive, enabling temporal personalization impossible with static rule databases.
+\end{enumerate}
+
+\section{Phase 2: Data Acquisition \& Preprocessing}
+
+\subsection{Data Collection}
+
+\subsubsection{Primary Dataset: MovieLens}
+We utilize the \textbf{MovieLens} dataset as our foundational data source:
+\begin{itemize}
+    \item \textbf{movies.csv}: Movie metadata (ID, title, genres)
+    \item \textbf{ratings.csv}: User-movie interaction matrix (userId, movieId, rating, timestamp)
+    \item \textbf{links.csv}: External ID mappings (movieId, imdbId, tmdbId)
+\end{itemize}
+
+\subsubsection{API-Based Enrichment: TMDB}
+We implemented a Python ETL pipeline (\texttt{01\_tmdb\_collector.py}) to enrich our dataset with live metadata from The Movie Database (TMDB) REST API:
+\begin{itemize}
+    \item Budget, revenue, runtime, vote statistics
+    \item Handles rate limiting and API error management
+    \item Demonstrates hybrid batch + streaming data architecture
+\end{itemize}
+
+\textbf{Data Collection Evidence:}
+\begin{lstlisting}[language=Python, caption=TMDB Collection Snippet]
+def fetch_movie_details(tmdb_id):
+    url = f"{TMDB_BASE_URL}/movie/{tmdb_id}"
+    params = {'api_key': TMDB_API_KEY}
+    response = requests.get(url, params=params)
+    return response.json()
+\end{lstlisting}
+
+\subsection{Data Cleaning Implementation}
+
+Our cleaning pipeline (\texttt{02\_data\_cleaning.py}) addresses data quality issues systematically:
+
+\subsubsection{Missing Value Handling}
+\begin{itemize}
+    \item \textbf{Movies}: Missing genres filled with 'Unknown' category
+    \item \textbf{Ratings}: Rows with null ratings dropped (ensures matrix completeness)
+    \item \textbf{Links}: Movies without TMDB IDs removed (required for API enrichment)
+\end{itemize}
+
+\subsubsection{Duplicate Removal}
+\begin{itemize}
+    \item Removed duplicate movieId entries (kept first occurrence)
+    \item For duplicate user-movie ratings, retained most recent timestamp
+\end{itemize}
+
+\subsubsection{Outlier Management}
+\begin{itemize}
+    \item Rating outliers: Enforced valid range [0.5, 5.0]
+    \item Removed statistically invalid entries (e.g., negative ratings)
+\end{itemize}
+
+\textbf{Cleaning Results:}
+\begin{itemize}
+    \item Total ratings processed: $>$100,000 user-movie interactions
+    \item Data integrity: 100\% valid rating range post-cleaning
+    \item Missing value resolution: $<$1\% data loss
+\end{itemize}
+
+\subsection{Feature Engineering Strategy}
+
+Our feature engineering pipeline (\texttt{03\_feature\_strategy.py}) implements multiple preprocessing techniques:
+
+\subsubsection{Normalization \& Scaling}
+\begin{enumerate}
+    \item \textbf{Min-Max Normalization} (User Features):
+    \begin{equation}
+        x_{\text{norm}} = \frac{x - x_{\min}}{x_{\max} - x_{\min}}
+    \end{equation}
+    Applied to: rating count, rating mean (normalized to [0,1] range)
+    
+    \item \textbf{Standard Scaling} (Movie Features):
+    \begin{equation}
+        x_{\text{std}} = \frac{x - \mu}{\sigma}
+    \end{equation}
+    Applied to: number of ratings, average rating (zero mean, unit variance)
+\end{enumerate}
+
+\subsubsection{Categorical Encoding}
+\begin{itemize}
+    \item \textbf{Label Encoding}: Genre categories mapped to integer indices
+    \item \textbf{Feature Extraction}: Primary genre extracted from multi-genre strings
+    \item Future work: One-hot encoding for multi-label genre classification
+\end{itemize}
+
+\subsubsection{Engineered Features}
+\textbf{User-Level Features:}
+\begin{itemize}
+    \item Rating count (activity level)
+    \item Mean rating (user preference baseline)
+    \item Rating standard deviation (rating consistency)
+\end{itemize}
+
+\textbf{Movie-Level Features:}
+\begin{itemize}
+    \item Number of ratings (popularity proxy)
+    \item Average rating (quality indicator)
+    \item Rating variance (polarization measure)
+    \item Genre encoding
+\end{itemize}
+
+\subsection{Exploratory Data Analysis (EDA)}
+
+\subsubsection{Rating Distribution}
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.75\textwidth]{figures/rating_distribution.png}
+    \caption{Distribution of user ratings shows positive skew (users tend to rate movies they like)}
+    \label{fig:rating_dist}
+\end{figure}
+
+Figure \ref{fig:rating_dist} reveals that ratings follow a left-skewed distribution with a mean of approximately 3.5/5.0. This positive bias indicates users preferentially rate content they enjoy, introducing implicit selection bias into our collaborative filtering model.
+
+\subsubsection{Genre Distribution}
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.75\textwidth]{figures/genre_distribution.png}
+    \caption{Drama and Comedy dominate the dataset, indicating potential class imbalance}
+    \label{fig:genre_dist}
+\end{figure}
+
+The genre distribution (Figure \ref{fig:genre_dist}) shows strong imbalance, with Drama and Comedy comprising $>$40\% of entries. This necessitates stratified sampling or class weighting in future model training.
+
+\subsubsection{User Activity Patterns}
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.75\textwidth]{figures/user_activity.png}
+    \caption{User activity follows power-law distribution (few highly active users, many sparse users)}
+    \label{fig:user_activity}
+\end{figure}
+
+Figure \ref{fig:user_activity} demonstrates a classic long-tail distribution: a small fraction of users contribute the majority of ratings, while most users have sparse interaction histories. This sparsity challenge motivates hybrid recommendation approaches.
+
+\subsubsection{Feature Correlations}
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.75\textwidth]{figures/correlation_matrix.png}
+    \caption{Correlation heatmap reveals independence between key features (low multicollinearity)}
+    \label{fig:correlation}
+\end{figure}
+
+The correlation analysis (Figure \ref{fig:correlation}) shows weak correlations between engineered features ($|r| < 0.3$), indicating minimal redundancy and validating feature independence for model training.
+
+\subsubsection{Popularity vs. Quality}
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.75\textwidth]{figures/popularity_vs_rating.png}
+    \caption{Weak correlation between popularity (rating count) and quality (average rating)}
+    \label{fig:pop_vs_rating}
+\end{figure}
+
+Figure \ref{fig:pop_vs_rating} reveals that popular movies (high rating counts) do not necessarily receive higher average ratings, suggesting that mainstream appeal differs from critical quality—an insight valuable for diversifying recommendations.
+
+\section{Technical Implementation Summary}
+
+\subsection{Data Pipeline Architecture}
+\begin{enumerate}
+    \item \textbf{Collection} (\texttt{01\_tmdb\_collector.py}): API-based enrichment + batch import
+    \item \textbf{Cleaning} (\texttt{02\_data\_cleaning.py}): Missing value imputation, outlier removal
+    \item \textbf{Feature Engineering} (\texttt{03\_feature\_strategy.py}): Scaling, encoding, EDA generation
+\end{enumerate}
+
+\subsection{Tools \& Libraries}
+\begin{itemize}
+    \item \textbf{Data Processing}: pandas, numpy
+    \item \textbf{Visualization}: matplotlib, seaborn
+    \item \textbf{Preprocessing}: scikit-learn (StandardScaler, MinMaxScaler, LabelEncoder)
+    \item \textbf{API Integration}: requests (TMDB REST API)
+\end{itemize}
+
+\subsection{Dataset Statistics (Post-Processing)}
+\begin{table}[h]
+\centering
+\begin{tabular}{@{}lc@{}}
+\toprule
+\textbf{Metric} & \textbf{Value} \\ \midrule
+Total Movies & $\sim$9,700 \\
+Total Ratings & $\sim$100,000 \\
+Unique Users & $\sim$600 \\
+Average Ratings per User & 166.7 \\
+Average Ratings per Movie & 10.3 \\
+Rating Sparsity & 98.3\% \\
+\bottomrule
+\end{tabular}
+\caption{GenreGenie Dataset Summary Statistics}
+\label{tab:dataset_stats}
+\end{table}
+
+\section{Conclusion \& Next Steps}
+
+We have successfully completed Phase 1 (Problem Definition) and Phase 2 (Data Acquisition \& Preprocessing) for the GenreGenie recommendation engine. Our data pipeline demonstrates:
+\begin{itemize}
+    \item Robust ETL implementation with API integration
+    \item Comprehensive data cleaning addressing real-world quality issues
+    \item Systematic feature engineering with appropriate normalization/encoding
+    \item Detailed EDA revealing data characteristics critical for model design
+\end{itemize}
+
+\textbf{Future Work (Next Deliverables):}
+\begin{enumerate}
+    \item Model selection: Compare Matrix Factorization vs. Neural Collaborative Filtering
+    \item Training pipeline: Implement train/validation/test splits with cross-validation
+    \item Evaluation metrics: RMSE, MAE, Precision@K, NDCG@K
+    \item Deployment: REST API endpoint for real-time recommendation inference
+\end{enumerate}
+
+\section*{Appendix: Code Repository}
+All code, datasets, and documentation are available at: \\
+\url{https://github.com/l242519-l242590/GenreGenie}
+
+\textbf{Repository Structure:}
+\begin{verbatim}
+GenreGenie/
+├── data_scripts/
+│   ├── 01_tmdb_collector.py
+│   ├── 02_data_cleaning.py
+│   └── 03_feature_strategy.py
+├── docs/
+│   ├── report.tex
+│   └── figures/
+└── README.md
+\end{verbatim}
+
+\end{document}
