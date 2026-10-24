@@ -4,6 +4,7 @@ __pycache__/
 
 # IDE
 .vscode/
+.claude/
 
 # LaTeX
 *.aux
