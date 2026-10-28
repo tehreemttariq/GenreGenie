@@ -192,7 +192,3 @@ GenreGenie/
 ✅ **Fair credit:** Each member's work visible in commits  
 
 ---
-
-**Which role do you want? Member 1 (Models & Training) or Member 2 (Evaluation & Analysis)?**
-
-Once you decide, I'll create all the files and detailed implementation guide for your part! 🚀
