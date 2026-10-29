@@ -1,7 +1,6 @@
 """
 GenreGenie Recommendation Models
 Simple implementations of Matrix Factorization and Neural Collaborative Filtering
-Author: Member 1 (l242519 or l242590)
 """
 
 import torch

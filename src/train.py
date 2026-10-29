@@ -1,6 +1,5 @@
 """
 Training script for GenreGenie recommendation models
-Author: Member 1 (l242519 or l242590)
 """
 
 import torch
@@ -249,7 +248,5 @@ if __name__ == "__main__":
     print("\nTraining history saved:")
     print("  - results/training_history.json")
     
-    # Optional: Run hyperparameter search
-    # Uncomment to run:
     # print("\n")
     # hyperparameter_search()

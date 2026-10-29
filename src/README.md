@@ -1,7 +1,5 @@
 # GenreGenie - Source Code
 
-## Member 1: Model Architecture & Training
-
 ### Files
 - `model.py` - Model architectures (Matrix Factorization & Neural CF)
 - `dataset.py` - Data loading and PyTorch datasets
@@ -69,4 +67,3 @@ hyperparameter_search()
 ### Training Time
 - Matrix Factorization: ~2-3 minutes
 - Neural CF: ~3-5 minutes
-(On CPU, faster on GPU)

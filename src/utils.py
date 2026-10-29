@@ -1,6 +1,5 @@
 """
 Utility functions for training and saving models
-Author: Member 1 (l242519 or l242590)
 """
 
 import torch
