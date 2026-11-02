@@ -1,105 +1,143 @@
 """
-Dataset loading and preprocessing for PyTorch
+Data loading and preprocessing for scikit-learn models
+Author: Member 1 (l242519 or l242590)
 """
 
 import pandas as pd
 import numpy as np
-import torch
-from torch.utils.data import Dataset, DataLoader
 from sklearn.model_selection import train_test_split
+from scipy.sparse import csr_matrix
 
 
-class MovieRatingsDataset(Dataset):
+def load_ratings_data(ratings_path='data/cleaned/ratings_cleaned.csv'):
     """
-    PyTorch Dataset for movie ratings
-    """
-    
-    def __init__(self, user_ids, movie_ids, ratings):
-        self.user_ids = torch.LongTensor(user_ids)
-        self.movie_ids = torch.LongTensor(movie_ids)
-        self.ratings = torch.FloatTensor(ratings)
-    
-    def __len__(self):
-        return len(self.ratings)
-    
-    def __getitem__(self, idx):
-        return self.user_ids[idx], self.movie_ids[idx], self.ratings[idx]
-
-
-def load_and_prepare_data(ratings_path='data/cleaned/ratings_cleaned.csv'):
-    """
-    Load ratings data and prepare for training
+    Load ratings data from CSV
     
     Returns:
-        train_loader, val_loader, test_loader, n_users, n_movies
+        DataFrame with ratings
     """
     print("Loading ratings data...")
-    
-    # Load ratings
     ratings_df = pd.read_csv(ratings_path)
     
-    print(f"Total ratings: {len(ratings_df)}")
-    print(f"Users: {ratings_df['userId'].nunique()}")
-    print(f"Movies: {ratings_df['movieId'].nunique()}")
+    print(f"Total ratings: {len(ratings_df):,}")
+    print(f"Unique users: {ratings_df['userId'].nunique():,}")
+    print(f"Unique movies: {ratings_df['movieId'].nunique():,}")
+    print(f"Rating range: [{ratings_df['rating'].min()}, {ratings_df['rating'].max()}]")
+    print(f"Average rating: {ratings_df['rating'].mean():.2f}")
     
-    # Create user and movie ID mappings (0-indexed for PyTorch)
-    user_ids = ratings_df['userId'].unique()
-    movie_ids = ratings_df['movieId'].unique()
+    return ratings_df
+
+
+def create_user_item_matrix(ratings_df):
+    """
+    Create user-item ratings matrix
     
-    user_to_idx = {user_id: idx for idx, user_id in enumerate(user_ids)}
-    movie_to_idx = {movie_id: idx for idx, movie_id in enumerate(movie_ids)}
+    Returns:
+        ratings_matrix, user_mapping, movie_mapping
+    """
+    print("\nCreating user-item matrix...")
+    
+    # Create mappings
+    unique_users = ratings_df['userId'].unique()
+    unique_movies = ratings_df['movieId'].unique()
+    
+    user_to_idx = {user_id: idx for idx, user_id in enumerate(unique_users)}
+    movie_to_idx = {movie_id: idx for idx, movie_id in enumerate(unique_movies)}
     
     # Map to indices
-    ratings_df['user_idx'] = ratings_df['userId'].map(user_to_idx)
-    ratings_df['movie_idx'] = ratings_df['movieId'].map(movie_to_idx)
-    
-    # Extract arrays
-    users = ratings_df['user_idx'].values
-    movies = ratings_df['movie_idx'].values
+    user_indices = ratings_df['userId'].map(user_to_idx).values
+    movie_indices = ratings_df['movieId'].map(movie_to_idx).values
     ratings = ratings_df['rating'].values
     
-    # Split data: 70% train, 15% validation, 15% test
-    X = np.column_stack([users, movies])
-    y = ratings
+    # Create matrix
+    n_users = len(unique_users)
+    n_movies = len(unique_movies)
     
-    X_train, X_temp, y_train, y_temp = train_test_split(
-        X, y, test_size=0.3, random_state=42
+    ratings_matrix = np.zeros((n_users, n_movies))
+    ratings_matrix[user_indices, movie_indices] = ratings
+    
+    print(f"Matrix shape: {ratings_matrix.shape}")
+    print(f"Sparsity: {100 * (1 - np.count_nonzero(ratings_matrix) / ratings_matrix.size):.2f}%")
+    
+    return ratings_matrix, user_to_idx, movie_to_idx
+
+
+def split_data(ratings_df, test_size=0.15, val_size=0.15, random_state=42):
+    """
+    Split data into train, validation, and test sets
+    
+    Args:
+        ratings_df: DataFrame with ratings
+        test_size: Fraction for test set
+        val_size: Fraction for validation set
+        random_state: Random seed
+        
+    Returns:
+        train_df, val_df, test_df
+    """
+    print("\nSplitting data...")
+    
+    # First split: train+val vs test
+    train_val_df, test_df = train_test_split(
+        ratings_df,
+        test_size=test_size,
+        random_state=random_state
     )
     
-    X_val, X_test, y_val, y_test = train_test_split(
-        X_temp, y_temp, test_size=0.5, random_state=42
+    # Second split: train vs val
+    val_ratio = val_size / (1 - test_size)
+    train_df, val_df = train_test_split(
+        train_val_df,
+        test_size=val_ratio,
+        random_state=random_state
     )
     
-    print(f"\nData split:")
-    print(f"  Train: {len(X_train)} ({len(X_train)/len(ratings_df)*100:.1f}%)")
-    print(f"  Val:   {len(X_val)} ({len(X_val)/len(ratings_df)*100:.1f}%)")
-    print(f"  Test:  {len(X_test)} ({len(X_test)/len(ratings_df)*100:.1f}%)")
+    print(f"Train: {len(train_df):,} ({len(train_df)/len(ratings_df)*100:.1f}%)")
+    print(f"Val:   {len(val_df):,} ({len(val_df)/len(ratings_df)*100:.1f}%)")
+    print(f"Test:  {len(test_df):,} ({len(test_df)/len(ratings_df)*100:.1f}%)")
     
-    # Create datasets
-    train_dataset = MovieRatingsDataset(X_train[:, 0], X_train[:, 1], y_train)
-    val_dataset = MovieRatingsDataset(X_val[:, 0], X_val[:, 1], y_val)
-    test_dataset = MovieRatingsDataset(X_test[:, 0], X_test[:, 1], y_test)
+    return train_df, val_df, test_df
+
+
+def prepare_data_for_training(ratings_path='data/cleaned/ratings_cleaned.csv'):
+    """
+    Complete data preparation pipeline
     
-    # Create dataloaders
-    train_loader = DataLoader(train_dataset, batch_size=256, shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=512, shuffle=False)
-    test_loader = DataLoader(test_dataset, batch_size=512, shuffle=False)
+    Returns:
+        train_matrix, val_data, test_data, mappings
+    """
+    # Load data
+    ratings_df = load_ratings_data(ratings_path)
     
-    n_users = len(user_ids)
-    n_movies = len(movie_ids)
+    # Split data
+    train_df, val_df, test_df = split_data(ratings_df)
     
-    # Save mappings for later use
+    # Create user-item matrix from training data
+    train_matrix, user_to_idx, movie_to_idx = create_user_item_matrix(train_df)
+    
+    # Prepare validation and test data - only keep items in training set
+    def filter_data(df):
+        """Filter to only include users and movies seen in training"""
+        df = df[df['userId'].isin(user_to_idx.keys())]
+        df = df[df['movieId'].isin(movie_to_idx.keys())]
+        
+        return {
+            'user_ids': df['userId'].map(user_to_idx).values,
+            'movie_ids': df['movieId'].map(movie_to_idx).values,
+            'ratings': df['rating'].values
+        }
+    
+    val_data = filter_data(val_df)
+    test_data = filter_data(test_df)
+    
+    print(f"\nFiltered validation: {len(val_data['ratings'])} samples")
+    print(f"Filtered test: {len(test_data['ratings'])} samples")
+    
     mappings = {
         'user_to_idx': user_to_idx,
-        'movie_to_idx': movie_to_idx
+        'movie_to_idx': movie_to_idx,
+        'idx_to_user': {v: k for k, v in user_to_idx.items()},
+        'idx_to_movie': {v: k for k, v in movie_to_idx.items()}
     }
     
-    return train_loader, val_loader, test_loader, n_users, n_movies, mappings
-
-
-def create_dataloaders(users, movies, ratings, batch_size=256):
-    """
-    Create DataLoader from arrays
-    """
-    dataset = MovieRatingsDataset(users, movies, ratings)
-    return DataLoader(dataset, batch_size=batch_size, shuffle=True)
+    return train_matrix, val_data, test_data, mappings

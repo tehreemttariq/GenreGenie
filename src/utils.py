@@ -1,12 +1,13 @@
 """
 Utility functions for training and saving models
+Author: Member 1 (l242519 or l242590)
 """
 
-import torch
 import random
 import numpy as np
 import json
 import os
+import pickle
 
 
 def set_seed(seed=42):
@@ -15,65 +16,44 @@ def set_seed(seed=42):
     """
     random.seed(seed)
     np.random.seed(seed)
-    torch.manual_seed(seed)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed(seed)
-        torch.cuda.manual_seed_all(seed)
+    print(f"Random seed set to {seed}")
 
 
-def save_model(model, path, epoch, optimizer, loss):
+def save_model(model, path):
     """
-    Save model checkpoint
+    Save model to disk using pickle
     """
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    
-    checkpoint = {
-        'epoch': epoch,
-        'model_state_dict': model.state_dict(),
-        'optimizer_state_dict': optimizer.state_dict(),
-        'loss': loss
-    }
-    
-    torch.save(checkpoint, path)
-    print(f"Model saved to {path}")
+    model.save(path)
+    print(f"✓ Model saved to {path}")
 
 
-def load_model(model, path, optimizer=None):
+def load_model(path):
     """
-    Load model checkpoint
+    Load model from disk
     """
-    checkpoint = torch.load(path)
-    model.load_state_dict(checkpoint['model_state_dict'])
-    
-    if optimizer is not None:
-        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-    
-    return checkpoint['epoch'], checkpoint['loss']
+    with open(path, 'rb') as f:
+        model = pickle.load(f)
+    print(f"✓ Model loaded from {path}")
+    return model
 
 
-def save_training_history(history, path='results/training_history.json'):
+def save_training_history(results, path='results/training_results.json'):
     """
-    Save training history to JSON
+    Save training results to JSON
     """
     os.makedirs(os.path.dirname(path), exist_ok=True)
     
     with open(path, 'w') as f:
-        json.dump(history, f, indent=2)
+        json.dump(results, f, indent=2)
     
-    print(f"Training history saved to {path}")
+    print(f"✓ Results saved to {path}")
 
 
-def get_device():
+def load_training_history(path='results/training_results.json'):
     """
-    Get device (GPU if available, else CPU)
+    Load training results from JSON
     """
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    print(f"Using device: {device}")
-    return device
-
-
-def count_parameters(model):
-    """
-    Count trainable parameters in model
-    """
-    return sum(p.numel() for p in model.parameters() if p.requires_grad)
+    with open(path, 'r') as f:
+        results = json.load(f)
+    return results

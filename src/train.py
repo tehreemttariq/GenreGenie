@@ -1,167 +1,261 @@
 """
-Training script for GenreGenie recommendation models
+Training script for GenreGenie recommendation models using scikit-learn
+Author: Member 1 (l242519 or l242590)
 """
 
-import torch
-import torch.nn as nn
-import torch.optim as optim
-from tqdm import tqdm
+import numpy as np
 import pandas as pd
+import json
+import os
+from sklearn.metrics import mean_squared_error, mean_absolute_error
+import time
 
-from model import MatrixFactorization, NeuralCollaborativeFiltering
-from dataset import load_and_prepare_data
-from utils import set_seed, save_model, save_training_history, get_device, count_parameters
+from model import MatrixFactorizationSVD, CollaborativeFilteringKNN, CollaborativeFilteringBaseline
+from dataset import prepare_data_for_training
+from utils import save_model, save_training_history, set_seed
 
 
-def train_epoch(model, train_loader, optimizer, criterion, device):
+def evaluate_model(model, user_ids, movie_ids, true_ratings):
     """
-    Train for one epoch
-    """
-    model.train()
-    total_loss = 0
+    Evaluate model performance
     
-    for user_ids, movie_ids, ratings in train_loader:
-        user_ids = user_ids.to(device)
-        movie_ids = movie_ids.to(device)
-        ratings = ratings.to(device)
-        
-        # Forward pass
-        predictions = model(user_ids, movie_ids)
-        loss = criterion(predictions, ratings)
-        
-        # Backward pass
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-        
-        total_loss += loss.item()
-    
-    return total_loss / len(train_loader)
-
-
-def validate(model, val_loader, criterion, device):
+    Returns:
+        Dictionary with metrics
     """
-    Validate the model
-    """
-    model.eval()
-    total_loss = 0
+    predictions = model.predict(user_ids, movie_ids)
     
-    with torch.no_grad():
-        for user_ids, movie_ids, ratings in val_loader:
-            user_ids = user_ids.to(device)
-            movie_ids = movie_ids.to(device)
-            ratings = ratings.to(device)
-            
-            predictions = model(user_ids, movie_ids)
-            loss = criterion(predictions, ratings)
-            
-            total_loss += loss.item()
+    # Clip predictions to valid range [0.5, 5.0]
+    predictions = np.clip(predictions, 0.5, 5.0)
     
-    return total_loss / len(val_loader)
+    rmse = np.sqrt(mean_squared_error(true_ratings, predictions))
+    mae = mean_absolute_error(true_ratings, predictions)
+    
+    return {
+        'rmse': rmse,
+        'mae': mae,
+        'predictions': predictions
+    }
 
 
-def train_model(model_type='mf', n_epochs=30, learning_rate=0.001, n_factors=50, 
-                dropout=0.2, save_path=None):
+def train_svd_model(train_matrix, val_data, test_data, n_factors=50, save_path=None):
     """
-    Main training function
+    Train SVD-based Matrix Factorization model
     
     Args:
-        model_type: 'mf' or 'ncf'
-        n_epochs: Number of training epochs
-        learning_rate: Learning rate for optimizer
-        n_factors: Embedding dimension
-        dropout: Dropout rate
-        save_path: Path to save best model
+        train_matrix: User-item ratings matrix
+        val_data: Validation data dict
+        test_data: Test data dict
+        n_factors: Number of latent factors
+        save_path: Path to save model
+        
+    Returns:
+        model, results
     """
     print("="*60)
-    print(f"Training {model_type.upper()} Model")
+    print("TRAINING SVD MATRIX FACTORIZATION MODEL")
     print("="*60)
     
-    # Set seed for reproducibility
-    set_seed(42)
+    print(f"\nConfiguration:")
+    print(f"  Latent factors: {n_factors}")
+    print(f"  Matrix shape: {train_matrix.shape}")
+    print(f"  Non-zero entries: {np.count_nonzero(train_matrix):,}")
     
-    # Get device
-    device = get_device()
+    # Train model
+    print("\nTraining model...")
+    start_time = time.time()
     
-    # Load data
-    train_loader, val_loader, test_loader, n_users, n_movies, mappings = load_and_prepare_data()
+    model = MatrixFactorizationSVD(n_factors=n_factors)
+    model.fit(train_matrix)
     
-    print(f"\nModel configuration:")
-    print(f"  Users: {n_users}")
-    print(f"  Movies: {n_movies}")
-    print(f"  Embedding dim: {n_factors}")
-    print(f"  Dropout: {dropout}")
-    print(f"  Learning rate: {learning_rate}")
+    training_time = time.time() - start_time
+    print(f"Training completed in {training_time:.2f} seconds")
     
-    # Create model
-    if model_type == 'mf':
-        model = MatrixFactorization(n_users, n_movies, n_factors, dropout)
-    elif model_type == 'ncf':
-        model = NeuralCollaborativeFiltering(n_users, n_movies, n_factors, [64, 32], dropout)
-    else:
-        raise ValueError(f"Unknown model type: {model_type}")
+    # Evaluate on validation set
+    print("\nEvaluating on validation set...")
+    val_metrics = evaluate_model(
+        model,
+        val_data['user_ids'],
+        val_data['movie_ids'],
+        val_data['ratings']
+    )
     
-    model = model.to(device)
+    print(f"  Validation RMSE: {val_metrics['rmse']:.4f}")
+    print(f"  Validation MAE:  {val_metrics['mae']:.4f}")
     
-    print(f"\nTrainable parameters: {count_parameters(model):,}")
+    # Evaluate on test set
+    print("\nEvaluating on test set...")
+    test_metrics = evaluate_model(
+        model,
+        test_data['user_ids'],
+        test_data['movie_ids'],
+        test_data['ratings']
+    )
     
-    # Loss and optimizer
-    criterion = nn.MSELoss()
-    optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+    print(f"  Test RMSE: {test_metrics['rmse']:.4f}")
+    print(f"  Test MAE:  {test_metrics['mae']:.4f}")
     
-    # Training history
-    history = {
-        'train_loss': [],
-        'val_loss': [],
-        'config': {
-            'model_type': model_type,
-            'n_epochs': n_epochs,
-            'learning_rate': learning_rate,
-            'n_factors': n_factors,
-            'dropout': dropout,
-            'batch_size': 256
-        }
+    # Save model
+    if save_path:
+        save_model(model, save_path)
+    
+    results = {
+        'model_type': 'svd',
+        'n_factors': n_factors,
+        'training_time': training_time,
+        'val_rmse': val_metrics['rmse'],
+        'val_mae': val_metrics['mae'],
+        'test_rmse': test_metrics['rmse'],
+        'test_mae': test_metrics['mae']
     }
     
-    # Training loop
-    best_val_loss = float('inf')
-    
-    print("\nStarting training...")
-    print("-"*60)
-    
-    for epoch in range(n_epochs):
-        # Train
-        train_loss = train_epoch(model, train_loader, optimizer, criterion, device)
-        
-        # Validate
-        val_loss = validate(model, val_loader, criterion, device)
-        
-        # Save history
-        history['train_loss'].append(train_loss)
-        history['val_loss'].append(val_loss)
-        
-        # Print progress
-        print(f"Epoch {epoch+1:3d}/{n_epochs} | "
-              f"Train Loss: {train_loss:.4f} | "
-              f"Val Loss: {val_loss:.4f}")
-        
-        # Save best model
-        if val_loss < best_val_loss:
-            best_val_loss = val_loss
-            if save_path:
-                save_model(model, save_path, epoch, optimizer, val_loss)
-    
-    print("-"*60)
-    print(f"Training complete!")
-    print(f"Best validation loss: {best_val_loss:.4f}")
-    
-    # Save training history
-    save_training_history(history)
-    
-    return model, history
+    return model, results
 
 
-def hyperparameter_search():
+def train_baseline_model(train_matrix, val_data, test_data, save_path=None):
+    """
+    Train Baseline Collaborative Filtering model
+    
+    Args:
+        train_matrix: User-item ratings matrix
+        val_data: Validation data dict
+        test_data: Test data dict
+        save_path: Path to save model
+        
+    Returns:
+        model, results
+    """
+    print("="*60)
+    print("TRAINING BASELINE COLLABORATIVE FILTERING MODEL")
+    print("="*60)
+    
+    print(f"\nConfiguration:")
+    print(f"  Method: User + Item bias")
+    print(f"  Matrix shape: {train_matrix.shape}")
+    
+    # Train model
+    print("\nTraining model...")
+    start_time = time.time()
+    
+    model = CollaborativeFilteringBaseline()
+    model.fit(train_matrix)
+    
+    training_time = time.time() - start_time
+    print(f"Training completed in {training_time:.2f} seconds")
+    
+    # Evaluate on validation set
+    print("\nEvaluating on validation set...")
+    val_metrics = evaluate_model(
+        model,
+        val_data['user_ids'],
+        val_data['movie_ids'],
+        val_data['ratings']
+    )
+    
+    print(f"  Validation RMSE: {val_metrics['rmse']:.4f}")
+    print(f"  Validation MAE:  {val_metrics['mae']:.4f}")
+    
+    # Evaluate on test set
+    print("\nEvaluating on test set...")
+    test_metrics = evaluate_model(
+        model,
+        test_data['user_ids'],
+        test_data['movie_ids'],
+        test_data['ratings']
+    )
+    
+    print(f"  Test RMSE: {test_metrics['rmse']:.4f}")
+    print(f"  Test MAE:  {test_metrics['mae']:.4f}")
+    
+    # Save model
+    if save_path:
+        save_model(model, save_path)
+    
+    results = {
+        'model_type': 'baseline',
+        'training_time': training_time,
+        'val_rmse': val_metrics['rmse'],
+        'val_mae': val_metrics['mae'],
+        'test_rmse': test_metrics['rmse'],
+        'test_mae': test_metrics['mae']
+    }
+    
+    return model, results
+
+
+def train_knn_model(train_matrix, val_data, test_data, n_neighbors=20, save_path=None):
+    """
+    Train KNN-based Collaborative Filtering model
+    
+    Args:
+        train_matrix: User-item ratings matrix
+        val_data: Validation data dict
+        test_data: Test data dict
+        n_neighbors: Number of neighbors
+        save_path: Path to save model
+        
+    Returns:
+        model, results
+    """
+    print("="*60)
+    print("TRAINING KNN COLLABORATIVE FILTERING MODEL")
+    print("="*60)
+    
+    print(f"\nConfiguration:")
+    print(f"  Neighbors: {n_neighbors}")
+    print(f"  Matrix shape: {train_matrix.shape}")
+    
+    # Train model
+    print("\nTraining model...")
+    start_time = time.time()
+    
+    model = CollaborativeFilteringKNN(n_neighbors=n_neighbors)
+    model.fit(train_matrix)
+    
+    training_time = time.time() - start_time
+    print(f"Training completed in {training_time:.2f} seconds")
+    
+    # Evaluate on validation set
+    print("\nEvaluating on validation set...")
+    val_metrics = evaluate_model(
+        model,
+        val_data['user_ids'],
+        val_data['movie_ids'],
+        val_data['ratings']
+    )
+    
+    print(f"  Validation RMSE: {val_metrics['rmse']:.4f}")
+    print(f"  Validation MAE:  {val_metrics['mae']:.4f}")
+    
+    # Evaluate on test set
+    print("\nEvaluating on test set...")
+    test_metrics = evaluate_model(
+        model,
+        test_data['user_ids'],
+        test_data['movie_ids'],
+        test_data['ratings']
+    )
+    
+    print(f"  Test RMSE: {test_metrics['rmse']:.4f}")
+    print(f"  Test MAE:  {test_metrics['mae']:.4f}")
+    
+    # Save model
+    if save_path:
+        save_model(model, save_path)
+    
+    results = {
+        'model_type': 'knn',
+        'n_neighbors': n_neighbors,
+        'training_time': training_time,
+        'val_rmse': val_metrics['rmse'],
+        'val_mae': val_metrics['mae'],
+        'test_rmse': test_metrics['rmse'],
+        'test_mae': test_metrics['mae']
+    }
+    
+    return model, results
+
+
+def hyperparameter_search(train_matrix, val_data, test_data):
     """
     Search over different hyperparameters
     """
@@ -169,84 +263,108 @@ def hyperparameter_search():
     print("HYPERPARAMETER SEARCH")
     print("="*60)
     
-    # Define hyperparameter grid
-    configs = [
-        {'learning_rate': 0.001, 'n_factors': 32, 'dropout': 0.1},
-        {'learning_rate': 0.001, 'n_factors': 50, 'dropout': 0.2},
-        {'learning_rate': 0.005, 'n_factors': 50, 'dropout': 0.2},
-        {'learning_rate': 0.001, 'n_factors': 64, 'dropout': 0.2},
-        {'learning_rate': 0.001, 'n_factors': 50, 'dropout': 0.3},
+    # SVD configurations
+    svd_configs = [
+        {'n_factors': 20},
+        {'n_factors': 50},
+        {'n_factors': 100},
+        {'n_factors': 150}
     ]
     
     results = []
     
-    for i, config in enumerate(configs):
-        print(f"\n[{i+1}/{len(configs)}] Testing config: {config}")
+    print("\nTesting SVD configurations...")
+    for i, config in enumerate(svd_configs):
+        print(f"\n[{i+1}/{len(svd_configs)}] Testing: {config}")
         
-        model, history = train_model(
-            model_type='mf',
-            n_epochs=20,
+        model, result = train_svd_model(
+            train_matrix, val_data, test_data,
             **config
         )
         
-        best_val_loss = min(history['val_loss'])
-        
-        results.append({
-            **config,
-            'best_val_loss': best_val_loss
-        })
+        results.append(result)
     
     # Save results
     results_df = pd.DataFrame(results)
-    results_df = results_df.sort_values('best_val_loss')
+    results_df = results_df.sort_values('val_rmse')
+    
+    os.makedirs('results', exist_ok=True)
     results_df.to_csv('results/hyperparameter_results.csv', index=False)
     
     print("\n" + "="*60)
     print("HYPERPARAMETER SEARCH RESULTS")
     print("="*60)
     print(results_df.to_string(index=False))
-    print(f"\nBest config: {results_df.iloc[0].to_dict()}")
+    print(f"\nBest configuration:")
+    print(results_df.iloc[0].to_dict())
     
     return results_df
 
 
 if __name__ == "__main__":
-    # Train Matrix Factorization
-    print("\n" + "="*60)
-    print("TRAINING MATRIX FACTORIZATION MODEL")
-    print("="*60 + "\n")
+    # Set random seed
+    set_seed(42)
     
-    mf_model, mf_history = train_model(
-        model_type='mf',
-        n_epochs=30,
-        learning_rate=0.001,
+    # Prepare data
+    print("="*60)
+    print("PREPARING DATA")
+    print("="*60)
+    train_matrix, val_data, test_data, mappings = prepare_data_for_training()
+    
+    # Save mappings for later use
+    os.makedirs('models', exist_ok=True)
+    with open('models/mappings.json', 'w') as f:
+        # Convert to JSON-serializable format
+        mappings_json = {
+            'user_to_idx': {int(k): int(v) for k, v in mappings['user_to_idx'].items()},
+            'movie_to_idx': {int(k): int(v) for k, v in mappings['movie_to_idx'].items()}
+        }
+        json.dump(mappings_json, f, indent=2)
+    
+    print("\n" + "="*60)
+    print("TRAINING MODELS")
+    print("="*60)
+    
+    # Train SVD model
+    svd_model, svd_results = train_svd_model(
+        train_matrix, val_data, test_data,
         n_factors=50,
-        dropout=0.2,
-        save_path='models/matrix_factorization_best.pth'
+        save_path='models/svd_model.pkl'
     )
     
-    print("\n" + "="*60)
-    print("TRAINING NEURAL COLLABORATIVE FILTERING MODEL")
-    print("="*60 + "\n")
+    print("\n")
     
-    # Train Neural CF
-    ncf_model, ncf_history = train_model(
-        model_type='ncf',
-        n_epochs=30,
-        learning_rate=0.001,
-        n_factors=50,
-        dropout=0.2,
-        save_path='models/neural_cf_best.pth'
+    # Train Baseline model (faster alternative to KNN)
+    baseline_model, baseline_results = train_baseline_model(
+        train_matrix, val_data, test_data,
+        save_path='models/baseline_model.pkl'
     )
     
+    # Save combined results
+    all_results = {
+        'svd': svd_results,
+        'baseline': baseline_results
+    }
+    
+    save_training_history(all_results, 'results/training_results.json')
+    
     print("\n" + "="*60)
-    print("ALL TRAINING COMPLETE!")
+    print("TRAINING COMPLETE!")
     print("="*60)
     print("\nModels saved:")
-    print("  - models/matrix_factorization_best.pth")
-    print("  - models/neural_cf_best.pth")
-    print("\nTraining history saved:")
-    print("  - results/training_history.json")
+    print("  - models/svd_model.pkl")
+    print("  - models/baseline_model.pkl")
+    print("  - models/mappings.json")
+    print("\nResults saved:")
+    print("  - results/training_results.json")
     
+    print("\n" + "="*60)
+    print("MODEL COMPARISON")
+    print("="*60)
+    comparison_df = pd.DataFrame([svd_results, baseline_results])
+    print(comparison_df[['model_type', 'val_rmse', 'val_mae', 'test_rmse', 'test_mae']].to_string(index=False))
+    
+    # Optional: Run hyperparameter search
+    # Uncomment to run:
     # print("\n")
-    # hyperparameter_search()
+    # hyperparameter_search(train_matrix, val_data, test_data)
