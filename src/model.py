@@ -1,8 +1,6 @@
-"""
-GenreGenie Recommendation Models using Scikit-Learn
-Simple implementations using SVD and KNN
-Author: Member 1 (l242519 or l242590)
-"""
+
+#GenreGenie Recommendation Models using Scikit-Learn
+
 
 from sklearn.decomposition import TruncatedSVD
 from sklearn.neighbors import NearestNeighbors
@@ -12,18 +10,12 @@ import pickle
 
 
 class MatrixFactorizationSVD:
-    """
-    Matrix Factorization using Singular Value Decomposition (SVD)
-    Simple and effective collaborative filtering
-    """
-    
-    def __init__(self, n_factors=50):
-        """
-        Args:
-            n_factors: Number of latent factors
-        """
+    #uses SVD
+    #initial 50 , after hypertuning now 20
+    def __init__(self, n_factors=20):#means it looks for 20 hidden factors/patterns.
+        #Args:n_factors: Number of latent factors
         self.n_factors = n_factors
-        self.svd = TruncatedSVD(n_components=n_factors, random_state=42)
+        self.svd = TruncatedSVD(n_components=n_factors, random_state=42)#creates svd model
         self.user_factors = None
         self.item_factors = None
         self.global_mean = None
@@ -31,43 +23,32 @@ class MatrixFactorizationSVD:
         self.item_means = None
     
     def fit(self, ratings_matrix):
-        """
-        Fit the model on user-item ratings matrix
-        
-        Args:
-            ratings_matrix: numpy array of shape (n_users, n_items)
-        """
+        #Trains the model using the ratings matrix.
         # Store global mean
         self.global_mean = np.mean(ratings_matrix[ratings_matrix > 0])
         
         # Center the ratings
         centered_matrix = ratings_matrix.copy()
         mask = ratings_matrix > 0
-        centered_matrix[mask] -= self.global_mean
+        centered_matrix[mask] -= self.global_mean #subtracts the average rating from actual ratings
         
         # Apply SVD
-        self.user_factors = self.svd.fit_transform(centered_matrix)
-        self.item_factors = self.svd.components_.T
-        
+        self.user_factors = self.svd.fit_transform(centered_matrix)     #fit_transform() learns patterns and transforms the matrix into user factors.
+        self.item_factors = self.svd.components_.T      #components_ contains the learned item factors.
+        #.T transposes
         return self
     
     def predict(self, user_ids, item_ids):
-        """
-        Predict ratings for user-item pairs
-        
-        Args:
-            user_ids: array of user indices
-            item_ids: array of item indices
-            
-        Returns:
-            Predicted ratings
-        """
+        #predicts ratrings for user-item pairs
+
         # Ensure indices are integers
         user_ids = np.array(user_ids, dtype=int)
         item_ids = np.array(item_ids, dtype=int)
         
         predictions = []
-        
+        #zip() pairs each user with their corresponding movie
+        #np.dot() calculates the dot product of user and movie factors
+        #adds the global average to get the predicted rating.
         for user_id, item_id in zip(user_ids, item_ids):
             pred = self.global_mean + np.dot(
                 self.user_factors[user_id], 
@@ -105,11 +86,7 @@ class MatrixFactorizationSVD:
 
 
 class CollaborativeFilteringBaseline:
-    """
-    Simple Baseline Collaborative Filtering
-    Uses user and item averages for predictions
-    """
-    
+    #simple recommendation model that predicts ratings using average ratings of users and movies
     def __init__(self):
         """
         Simple baseline predictor
@@ -154,14 +131,8 @@ class CollaborativeFilteringBaseline:
     
     def predict(self, user_ids, item_ids):
         """
-        Predict ratings using baseline approach
-        
-        Args:
-            user_ids: array of user indices
-            item_ids: array of item indices
-            
-        Returns:
-            Predicted ratings
+        Predicts ratings using averages
+        returns:Predicted ratings
         """
         # Ensure indices are integers
         user_ids = np.array(user_ids, dtype=int)

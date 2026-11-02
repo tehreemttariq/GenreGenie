@@ -366,5 +366,5 @@ if __name__ == "__main__":
     
     # Optional: Run hyperparameter search
     # Uncomment to run:
-    # print("\n")
-    # hyperparameter_search(train_matrix, val_data, test_data)
+    print("\n")
+    hyperparameter_search(train_matrix, val_data, test_data)

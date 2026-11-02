@@ -1,7 +1,5 @@
-"""
-Data loading and preprocessing for scikit-learn models
-Author: Member 1 (l242519 or l242590)
-"""
+
+#Data loading and preprocessing for scikit-learn models
 
 import pandas as pd
 import numpy as np
@@ -10,12 +8,7 @@ from scipy.sparse import csr_matrix
 
 
 def load_ratings_data(ratings_path='data/cleaned/ratings_cleaned.csv'):
-    """
-    Load ratings data from CSV
-    
-    Returns:
-        DataFrame with ratings
-    """
+    #load csv
     print("Loading ratings data...")
     ratings_df = pd.read_csv(ratings_path)
     
@@ -29,22 +22,16 @@ def load_ratings_data(ratings_path='data/cleaned/ratings_cleaned.csv'):
 
 
 def create_user_item_matrix(ratings_df):
-    """
-    Create user-item ratings matrix
-    
-    Returns:
-        ratings_matrix, user_mapping, movie_mapping
-    """
     print("\nCreating user-item matrix...")
     
-    # Create mappings
+    # save unique user id aNd movies 
     unique_users = ratings_df['userId'].unique()
     unique_movies = ratings_df['movieId'].unique()
-    
+    #enumerate() assigns indexes starting from 0.
     user_to_idx = {user_id: idx for idx, user_id in enumerate(unique_users)}
     movie_to_idx = {movie_id: idx for idx, movie_id in enumerate(unique_movies)}
     
-    # Map to indices
+    # map() replaces the original IDs with their new indexes in the DataFrame.
     user_indices = ratings_df['userId'].map(user_to_idx).values
     movie_indices = ratings_df['movieId'].map(movie_to_idx).values
     ratings = ratings_df['rating'].values
@@ -52,39 +39,29 @@ def create_user_item_matrix(ratings_df):
     # Create matrix
     n_users = len(unique_users)
     n_movies = len(unique_movies)
-    
+    #stores actual ratings at the corresponding user and movie positions.
+    #0 means the user hasn't rated that movie.
     ratings_matrix = np.zeros((n_users, n_movies))
     ratings_matrix[user_indices, movie_indices] = ratings
-    
+    #counts how many matrix values are non-zero (actual ratings)
+    #sparsity is the percentage of empty (zero) positions in the matrix.
     print(f"Matrix shape: {ratings_matrix.shape}")
     print(f"Sparsity: {100 * (1 - np.count_nonzero(ratings_matrix) / ratings_matrix.size):.2f}%")
-    
     return ratings_matrix, user_to_idx, movie_to_idx
 
 
 def split_data(ratings_df, test_size=0.15, val_size=0.15, random_state=42):
-    """
-    Split data into train, validation, and test sets
-    
-    Args:
-        ratings_df: DataFrame with ratings
-        test_size: Fraction for test set
-        val_size: Fraction for validation set
-        random_state: Random seed
-        
-    Returns:
-        train_df, val_df, test_df
-    """
+    #15% for testing and 85% for training + validation.
     print("\nSplitting data...")
     
-    # First split: train+val vs test
+    # First split is train+val vs test
     train_val_df, test_df = train_test_split(
         ratings_df,
         test_size=test_size,
         random_state=random_state
     )
     
-    # Second split: train vs val
+    # Second split is train vs val
     val_ratio = val_size / (1 - test_size)
     train_df, val_df = train_test_split(
         train_val_df,
@@ -100,19 +77,13 @@ def split_data(ratings_df, test_size=0.15, val_size=0.15, random_state=42):
 
 
 def prepare_data_for_training(ratings_path='data/cleaned/ratings_cleaned.csv'):
-    """
-    Complete data preparation pipeline
-    
-    Returns:
-        train_matrix, val_data, test_data, mappings
-    """
-    # Load data
+
     ratings_df = load_ratings_data(ratings_path)
     
-    # Split data
+    # split data
     train_df, val_df, test_df = split_data(ratings_df)
     
-    # Create user-item matrix from training data
+    # creates the user-item matrix using training data only.
     train_matrix, user_to_idx, movie_to_idx = create_user_item_matrix(train_df)
     
     # Prepare validation and test data - only keep items in training set
