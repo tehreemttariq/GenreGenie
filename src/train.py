@@ -1,8 +1,4 @@
-"""
-Training script for GenreGenie recommendation models using scikit-learn
-Author: Member 1 (l242519 or l242590)
-"""
-
+#training script 
 import numpy as np
 import pandas as pd
 import json
@@ -16,15 +12,10 @@ from utils import save_model, save_training_history, set_seed
 
 
 def evaluate_model(model, user_ids, movie_ids, true_ratings):
-    """
-    Evaluate model performance
-    
-    Returns:
-        Dictionary with metrics
-    """
+    #evaluate model performance returns dict 
     predictions = model.predict(user_ids, movie_ids)
     
-    # Clip predictions to valid range [0.5, 5.0]
+    # clip predictions to valid range [0.5, 5.0]
     predictions = np.clip(predictions, 0.5, 5.0)
     
     rmse = np.sqrt(mean_squared_error(true_ratings, predictions))
@@ -38,19 +29,7 @@ def evaluate_model(model, user_ids, movie_ids, true_ratings):
 
 
 def train_svd_model(train_matrix, val_data, test_data, n_factors=50, save_path=None):
-    """
-    Train SVD-based Matrix Factorization model
-    
-    Args:
-        train_matrix: User-item ratings matrix
-        val_data: Validation data dict
-        test_data: Test data dict
-        n_factors: Number of latent factors
-        save_path: Path to save model
-        
-    Returns:
-        model, results
-    """
+    #train svd based matrix factoriziation model 
     print("="*60)
     print("TRAINING SVD MATRIX FACTORIZATION MODEL")
     print("="*60)
@@ -112,18 +91,7 @@ def train_svd_model(train_matrix, val_data, test_data, n_factors=50, save_path=N
 
 
 def train_baseline_model(train_matrix, val_data, test_data, save_path=None):
-    """
-    Train Baseline Collaborative Filtering model
-    
-    Args:
-        train_matrix: User-item ratings matrix
-        val_data: Validation data dict
-        test_data: Test data dict
-        save_path: Path to save model
-        
-    Returns:
-        model, results
-    """
+    #train baseline colab filtering model 
     print("="*60)
     print("TRAINING BASELINE COLLABORATIVE FILTERING MODEL")
     print("="*60)
@@ -183,19 +151,7 @@ def train_baseline_model(train_matrix, val_data, test_data, save_path=None):
 
 
 def train_knn_model(train_matrix, val_data, test_data, n_neighbors=20, save_path=None):
-    """
-    Train KNN-based Collaborative Filtering model
-    
-    Args:
-        train_matrix: User-item ratings matrix
-        val_data: Validation data dict
-        test_data: Test data dict
-        n_neighbors: Number of neighbors
-        save_path: Path to save model
-        
-    Returns:
-        model, results
-    """
+    #train KNN based colab filtering mdels
     print("="*60)
     print("TRAINING KNN COLLABORATIVE FILTERING MODEL")
     print("="*60)
@@ -256,9 +212,7 @@ def train_knn_model(train_matrix, val_data, test_data, n_neighbors=20, save_path
 
 
 def hyperparameter_search(train_matrix, val_data, test_data):
-    """
-    Search over different hyperparameters
-    """
+    #search over diff hyperparameters
     print("="*60)
     print("HYPERPARAMETER SEARCH")
     print("="*60)
@@ -364,7 +318,6 @@ if __name__ == "__main__":
     comparison_df = pd.DataFrame([svd_results, baseline_results])
     print(comparison_df[['model_type', 'val_rmse', 'val_mae', 'test_rmse', 'test_mae']].to_string(index=False))
     
-    # Optional: Run hyperparameter search
-    # Uncomment to run:
+    # Uncomment to run
     print("\n")
     hyperparameter_search(train_matrix, val_data, test_data)

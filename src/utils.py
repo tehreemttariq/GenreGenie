@@ -1,7 +1,5 @@
-"""
-Utility functions for training and saving models
-Author: Member 1 (l242519 or l242590)
-"""
+
+#Utility functions for training and saving models
 
 import random
 import numpy as np
@@ -20,18 +18,14 @@ def set_seed(seed=42):
 
 
 def save_model(model, path):
-    """
-    Save model to disk using pickle
-    """
+    #save model to disk
     os.makedirs(os.path.dirname(path), exist_ok=True)
     model.save(path)
     print(f"✓ Model saved to {path}")
 
 
 def load_model(path):
-    """
-    Load model from disk
-    """
+    #load model from disk
     with open(path, 'rb') as f:
         model = pickle.load(f)
     print(f"✓ Model loaded from {path}")
@@ -39,9 +33,7 @@ def load_model(path):
 
 
 def save_training_history(results, path='results/training_results.json'):
-    """
-    Save training results to JSON
-    """
+    #save to json
     os.makedirs(os.path.dirname(path), exist_ok=True)
     
     with open(path, 'w') as f:
@@ -51,9 +43,7 @@ def save_training_history(results, path='results/training_results.json'):
 
 
 def load_training_history(path='results/training_results.json'):
-    """
-    Load training results from JSON
-    """
+    #load results from json
     with open(path, 'r') as f:
         results = json.load(f)
     return results
