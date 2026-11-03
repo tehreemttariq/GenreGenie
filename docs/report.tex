@@ -15,6 +15,13 @@
 \usepackage{setspace}
 \usepackage{pmboxdraw}
 \usepackage[most]{tcolorbox}
+\usepackage{tikz}
+\usepackage{pgfplots}
+\usepackage{booktabs}
+\usepackage{float}
+\usepackage{tabularx}
+\usetikzlibrary{positioning, arrows.meta}
+\pgfplotsset{compat=1.18}
 
 % ---- Purple theme (sampled from report.pdf) ----
 \definecolor{purpleDark}{RGB}{74,46,93}      % headings, title, rules
@@ -84,7 +91,7 @@
 \vspace{-0.5em}
 
 \begin{abstract}
-This report outlines Deliverable 1 for the \textbf{GenreGenie} project. GenreGenie addresses choice overload on streaming platforms by fusing live metadata ingestion from The Movie Database (TMDB) REST API with collaborative user interaction filtering models. We detail the domain problem, justify the necessity of Machine Learning over heuristic-based algorithms, document our end-to-end Python data collection and ETL pipeline, and define our feature strategy alongside initial Exploratory Data Analysis (EDA).
+This report outlines Deliverable 1 AND 2 for the \textbf{GenreGenie} project. GenreGenie addresses choice overload on streaming platforms by fusing live metadata ingestion from The Movie Database (TMDB) REST API with collaborative user interaction filtering models. We detail the domain problem, justify the necessity of Machine Learning over heuristic-based algorithms, document our end-to-end Python data collection and ETL pipeline, and define our feature strategy alongside initial Exploratory Data Analysis (EDA).
 \end{abstract}
 
 \section{Phase 1: Problem Definition}
@@ -300,27 +307,413 @@ Rating Sparsity & 98.3\% \\
 \label{tab:dataset_stats}
 \end{table}
 
-\section{Conclusion \& Next Steps}
+% =========================================================
+% PHASE 3: MODEL DEVELOPMENT AND TRAINING
+% =========================================================
 
-We have successfully completed Phase 1 (Problem Definition) and Phase 2 (Data Acquisition \& Preprocessing) for the GenreGenie recommendation engine. Our data pipeline demonstrates:
+\section{Phase 3: Model Development \& Training}
+
+\subsection{Machine Learning Framework}
+
+We used \textbf{Scikit-Learn} to develop and train collaborative
+filtering models for movie recommendations. The framework provides
+efficient tools for matrix factorization, nearest-neighbor search,
+and model evaluation.
+
+The project implements the following models:
+
 \begin{itemize}
-    \item Robust ETL implementation with API integration
-    \item Comprehensive data cleaning addressing real-world quality issues
-    \item Systematic feature engineering with appropriate normalization/encoding
-    \item Detailed EDA revealing data characteristics critical for model design
+    \item \textbf{Matrix Factorization (SVD):} Uses latent factors
+    to identify hidden relationships between users and movies.
+    \item \textbf{Collaborative Filtering Baseline:} Predicts ratings
+    using the global average, user rating bias, and movie rating bias.
+    \item \textbf{K-Nearest Neighbors (KNN):} Uses similarity between
+    movies to generate recommendations. Its results will be included
+    after its training and evaluation are completed.
 \end{itemize}
 
-\textbf{Future Work (Next Deliverables):}
+\subsection{Model Architecture}
+
+The recommendation pipeline converts user ratings into a
+user-item matrix. The matrix is then used to train collaborative
+filtering models, which generate predicted movie ratings.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+    node distance=0.7cm,
+    block/.style={
+        rectangle, rounded corners,
+        draw=purpleDark, fill=purpleLight,
+        text width=3.1cm, minimum height=0.8cm,
+        align=center
+    },
+    arrow/.style={->, thick, draw=purpleMid}
+]
+\node[block] (data) {MovieLens Ratings Dataset};
+\node[block, below=of data] (prep) {Data Loading and Preprocessing};
+\node[block, below=of prep] (matrix) {User-Item Rating Matrix};
+\node[block, below=of matrix] (models) {Collaborative Filtering Models};
+\node[block, below=of models] (prediction) {Predicted Movie Ratings};
+\node[block, below=of prediction] (evaluation) {Model Evaluation and Recommendations};
+
+\draw[arrow] (data) -- (prep);
+\draw[arrow] (prep) -- (matrix);
+\draw[arrow] (matrix) -- (models);
+\draw[arrow] (models) -- (prediction);
+\draw[arrow] (prediction) -- (evaluation);
+\end{tikzpicture}
+\caption{GenreGenie machine learning architecture}
+\label{fig:ml_architecture}
+\end{figure}
+
+\subsection{Dataset Preparation}
+
+The MovieLens ratings dataset contains approximately 100,836
+ratings from 610 users across 9,724 movies.
+
+We divided the dataset into three subsets:
+
+\begin{itemize}
+    \item Training set: 70\% (70,584 ratings)
+    \item Validation set: 15\% (15,126 ratings)
+    \item Test set: 15\% (15,126 ratings)
+\end{itemize}
+
+The training data was converted into a user-item rating matrix
+of shape $(610, 8607)$, with approximately 98.66\% sparsity.
+
+\subsection{Model Training}
+
+\textbf{1. Matrix Factorization (SVD)}
+
+We implemented Scikit-Learn's \texttt{TruncatedSVD} to reduce
+the rating matrix into a smaller latent-factor representation.
+The model uses user and movie latent factors to estimate ratings.
+
+The prediction formula is:
+
+\begin{equation}
+\hat{r}_{ui} = \mu + \mathbf{p}_u^T \mathbf{q}_i
+\end{equation}
+
+where $\mu$ is the global average rating, and
+$\mathbf{p}_u$ and $\mathbf{q}_i$ represent user and movie
+latent factors.
+
+\textbf{2. Collaborative Filtering Baseline}
+
+The baseline model predicts ratings using the global mean,
+user bias, and movie bias:
+
+\begin{equation}
+\hat{r}_{ui} = \mu + b_u + b_i
+\end{equation}
+
+where $b_u$ represents user bias and $b_i$ represents movie bias.
+
+\textbf{3. K-Nearest Neighbors (KNN)}
+
+KNN uses cosine similarity to identify movies with similar
+rating patterns. Recommendations are generated using ratings
+from similar movies. Its final performance will be reported
+after the model is trained and evaluated.
+
+\subsection{Hyperparameter Tuning}
+
+We tested different numbers of latent factors for SVD:
+20, 50, 100, and 150. The validation RMSE was used to select
+the best configuration.
+
+\begin{table}[H]
+\centering
+\begin{tabular}{ccc}
+\toprule
+\textbf{Latent Factors} & \textbf{Validation RMSE} &
+\textbf{Validation MAE} \\
+\midrule
+20  & 0.9905 & 0.7856 \\
+50  & 0.9983 & 0.7915 \\
+100 & 1.0107 & 0.8040 \\
+150 & 1.0190 & 0.8115 \\
+\bottomrule
+\end{tabular}
+\caption{SVD hyperparameter tuning results}
+\label{tab:svd_tuning}
+\end{table}
+
+The best SVD configuration was 20 latent factors because it
+achieved the lowest validation RMSE and MAE.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+    width=0.85\textwidth,
+    height=6cm,
+    xlabel={Number of Latent Factors},
+    ylabel={Validation RMSE},
+    xmin=10, xmax=160,
+    ymin=0.98, ymax=1.03,
+    xtick={20,50,100,150},
+    grid=major,
+    mark=*,
+    thick
+]
+\addplot coordinates {
+    (20,0.990462)
+    (50,0.998344)
+    (100,1.010698)
+    (150,1.019042)
+};
+\end{axis}
+\end{tikzpicture}
+\caption{SVD validation RMSE across hyperparameter configurations}
+\label{fig:svd_tuning_curve}
+\end{figure}
+
+\subsection{Model Saving}
+
+After training, the models and their mapping files were saved
+using Python's pickle and JSON functionality. This allows the
+trained models to be loaded later without repeating the training
+process.
+
+% =========================================================
+% PHASE 4: MODEL EVALUATION
+% =========================================================
+
+\section{Phase 4: Model Evaluation \& Validation}
+
+\subsection{Evaluation Strategy}
+
+We used a 70/15/15 training, validation, and test split.
+The validation set was used for model selection and
+hyperparameter tuning, while the test set was used to measure
+final model performance.
+
+\subsection{Evaluation Metrics}
+
+Since GenreGenie predicts numerical movie ratings, we use
+the following regression metrics:
+
+\textbf{Root Mean Squared Error (RMSE):}
+
+\begin{equation}
+RMSE = \sqrt{\frac{1}{n}\sum_{i=1}^{n}(y_i-\hat{y}_i)^2}
+\end{equation}
+
+RMSE penalizes larger prediction errors more heavily.
+
+\textbf{Mean Absolute Error (MAE):}
+
+\begin{equation}
+MAE = \frac{1}{n}\sum_{i=1}^{n}|y_i-\hat{y}_i|
+\end{equation}
+
+MAE measures the average absolute difference between actual
+and predicted ratings.
+
+Lower RMSE and MAE values indicate better rating predictions.
+
+\subsection{Model Performance Comparison}
+
+The following table compares the Baseline model with the
+best tuned SVD configuration.
+
+\begin{table}[H]
+\centering
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Model} & \textbf{Val RMSE} & \textbf{Val MAE} &
+\textbf{Test RMSE} & \textbf{Test MAE} \\
+\midrule
+SVD (20 factors) & 0.9905 & 0.7856 & 0.9952 & 0.7845 \\
+Baseline & 0.9071 & 0.6937 & 0.9051 & 0.6910 \\
+\bottomrule
+\end{tabular}
+\caption{Performance comparison of trained models}
+\label{tab:model_comparison}
+\end{table}
+
+The Baseline model achieved lower RMSE and MAE than SVD.
+This indicates that the average-based model performed better
+on the current dataset. The results also show that increasing
+the number of SVD latent factors did not improve performance.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+    ybar,
+    bar width=18pt,
+    width=0.85\textwidth,
+    height=6cm,
+    ylabel={Test Error},
+    symbolic x coords={SVD,Baseline},
+    xtick=data,
+    legend style={at={(0.5,-0.18)},anchor=north,legend columns=2},
+    ymin=0,
+    grid=major
+]
+\addplot coordinates {
+    (SVD,0.9952)
+    (Baseline,0.9051)
+};
+\addplot coordinates {
+    (SVD,0.7845)
+    (Baseline,0.6910)
+};
+\legend{RMSE,MAE}
+\end{axis}
+\end{tikzpicture}
+\caption{Test RMSE and MAE comparison}
+\label{fig:model_comparison}
+\end{figure}
+
+\subsection{Precision, Recall, and F1-Score}
+
+RMSE and MAE evaluate rating prediction accuracy, but they
+do not measure how effectively the system retrieves relevant
+movies.
+
+For recommendation evaluation, ratings can be converted into
+relevant and non-relevant labels using a defined rating
+threshold, such as 4.0 or above.
+
+\begin{equation}
+Precision@K =
+\frac{\text{Relevant recommended movies}}
+{\text{Total recommended movies}}
+\end{equation}
+
+\begin{equation}
+Recall@K =
+\frac{\text{Relevant recommended movies}}
+{\text{Total relevant movies}}
+\end{equation}
+
+\begin{equation}
+F1 = 2 \times
+\frac{Precision \times Recall}{Precision + Recall}
+\end{equation}
+
+These metrics will be calculated on the recommendation
+rankings after defining the relevance threshold and value of K.
+
+\subsection{AUC-ROC}
+
+AUC-ROC measures how well a model distinguishes relevant
+movies from non-relevant movies across different classification
+thresholds. It can be calculated by defining positive ratings
+(e.g., ratings of 4.0 or above) as relevant and the remaining
+ratings as non-relevant.
+
+AUC-ROC results will be reported after this binary evaluation
+has been implemented.
+
+\subsection{Error Analysis and Bias Check}
+
+Error analysis helps identify cases where predicted ratings
+differ significantly from actual ratings.
+
+The following checks are planned:
+
+\begin{itemize}
+    \item \textbf{Prediction Errors:} Identify movies and users
+    with large differences between actual and predicted ratings.
+    \item \textbf{User Activity Bias:} Compare model performance
+    for users with many ratings and users with few ratings.
+    \item \textbf{Genre Bias:} Compare recommendation performance
+    across different movie genres.
+    \item \textbf{Popularity Bias:} Check whether popular movies
+    receive more recommendations than less popular movies.
+\end{itemize}
+
+Demographic bias cannot currently be evaluated because
+demographic information is not included in the available dataset.
+
+\subsection{Contribution Table}
+
+The following table summarizes the contributions made by
+Aina Asad (l242519) to the GenreGenie machine learning modules.
+
+\begin{table}[H]
+\centering
+\small
+\renewcommand{\arraystretch}{1.25}
+\begin{tabularx}{\textwidth}{p{3.2cm}p{4.0cm}>{\raggedright\arraybackslash}X}
+\toprule
+\textbf{Git Author} &
+\textbf{Project Module} &
+\textbf{Contribution} \\
+\midrule
+Aina Asad (l242519) &
+\texttt{src/model.py} &
+Implemented SVD Matrix Factorization and Baseline Collaborative Filtering models using Scikit-Learn. \\
+\addlinespace
+
+Aina Asad (l242519) &
+\texttt{src/dataset.py} &
+Implemented data loading, user-item matrix creation, and train/validation/test splitting (70/15/15). \\
+\addlinespace
+
+Aina Asad (l242519) &
+\texttt{src/train.py} &
+Developed the training pipeline with validation, hyperparameter tuning (tested 20, 50, 100, and 150 latent factors), and model evaluation. \\
+\addlinespace
+
+Aina Asad (l242519) &
+\texttt{src/utils.py} &
+Implemented utility functions for model saving/loading, random seed management, and result persistence. \\
+\addlinespace
+
+Aina Asad (l242519) &
+\texttt{data\_scripts/requirements.txt} &
+Updated dependencies for the Scikit-Learn model training framework. \\
+\bottomrule
+\end{tabularx}
+\caption{Project contributions mapped to Git author and modules}
+\label{tab:contributions}
+\end{table}
+\subsection{Reproducibility}
+
+The project uses Git for version control. Individual commits
+document the development of different modules and identify
+the contributors responsible for each implementation.
+Trained model files, source code, and evaluation results are
+maintained in the project repository.
+
+
+\section{Conclusion \& Next Steps}
+
+GenreGenie has progressed through the problem definition,
+data preparation, model development, and evaluation stages.
+
+The project uses MovieLens ratings and TMDB metadata to
+support personalized movie recommendations. We implemented
+collaborative filtering models using Scikit-Learn, performed
+SVD hyperparameter tuning, and evaluated model performance
+using RMSE and MAE.
+
+The Baseline model achieved better test performance than
+the tuned SVD model, providing a useful benchmark for further
+improvements.
+
+\textbf{Next Steps:}
+
 \begin{enumerate}
-    \item Model selection: Compare Matrix Factorization vs. Neural Collaborative Filtering
-    \item Training pipeline: Implement train/validation/test splits with cross-validation
-    \item Evaluation metrics: RMSE, MAE, Precision@K, NDCG@K
-    \item Deployment: REST API endpoint for real-time recommendation inference
+    \item Complete KNN training and compare its performance.
+    \item Implement Precision@K, Recall@K, F1-Score, and AUC-ROC.
+    \item Complete user activity, genre, and popularity bias checks.
+    \item Integrate the trained recommendation model into the application.
+    \item Finalize Git contribution records and project documentation.
 \end{enumerate}
+
 
 \section*{Appendix: Code Repository}
 All code, datasets, and documentation are available at: \\
-\url{https://github.com/l242519-l242590/GenreGenie}
+\url{https://github.com/tehreemttariq/GenreGenie}
 
 \textbf{Repository Structure:}
 \begin{verbatim}
