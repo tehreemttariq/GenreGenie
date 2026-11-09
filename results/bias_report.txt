@@ -1,0 +1,25 @@
+GenreGenie recommendation bias and fairness analysis
+====================================================
+
+Scope: held-out rating errors by training-activity cohort and movie genre, plus top-K recommendation exposure by genre and training popularity.
+No demographic or other protected-group attributes are present in the available MovieLens data; this report is not a demographic fairness audit.
+
+User activity
+- Lowest RMSE: High activity (0.8855, 11276 ratings); highest RMSE: Low activity (1.0087, 910 ratings).
+
+Genre rating error
+- Among genres with at least 30 held-out ratings, lowest MAE: Mystery (0.6447, 1122 ratings); highest MAE: Horror (0.7364, 1054 ratings).
+
+Popularity exposure
+- The top 20% most-rated catalog movies received 0.0% of recommendation slots versus 20.0% of catalog items (difference: -20.0%).
+
+Genre recommendation exposure
+- Largest genre share difference: Drama (59.9% of recommendation slots versus 19.8% of catalog genre memberships; gap +40.2%).
+
+Top-K ranking evaluation
+- Precision@10: 0.0005; Recall@10: 0.0019; F1@10: 0.0008 across 585 users with at least one held-out relevant rating (rating >= 4.0).
+
+Interpretation
+- These are descriptive dataset-level comparisons, not evidence that activity, genre, or popularity caused the observed differences.
+- Genre memberships overlap, so genre exposure shares are not mutually exclusive.
+- Results depend on the deterministic random rating-level split and the selected trained model.
