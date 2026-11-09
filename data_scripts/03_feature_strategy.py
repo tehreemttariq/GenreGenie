@@ -9,7 +9,8 @@ PURPLE = '#8E5B9A'
 DEEP_PURPLE = '#6A3F7A'
 DARK_PURPLE = '#4A2E5D'
 PURPLE_CMAP = sns.color_palette(
-    [LILAC, PURPLE, DEEP_PURPLE, DARK_PURPLE], as_cmap=True
+    ['#F1EEFF', '#C4B5FD', '#8B7BE8', '#5946B2', '#30245F'],
+    as_cmap=True,
 )
 
 sns.set_style('whitegrid', {'grid.color': LILAC})
