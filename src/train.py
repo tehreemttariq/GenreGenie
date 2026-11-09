@@ -3,29 +3,12 @@ import numpy as np
 import pandas as pd
 import json
 import os
-from sklearn.metrics import mean_squared_error, mean_absolute_error
 import time
 
 from model import MatrixFactorizationSVD, CollaborativeFilteringKNN, CollaborativeFilteringBaseline
 from dataset import prepare_data_for_training
+from evaluate import evaluate_model
 from utils import save_model, save_training_history, set_seed
-
-
-def evaluate_model(model, user_ids, movie_ids, true_ratings):
-    #evaluate model performance returns dict 
-    predictions = model.predict(user_ids, movie_ids)
-    
-    # clip predictions to valid range [0.5, 5.0]
-    predictions = np.clip(predictions, 0.5, 5.0)
-    
-    rmse = np.sqrt(mean_squared_error(true_ratings, predictions))
-    mae = mean_absolute_error(true_ratings, predictions)
-    
-    return {
-        'rmse': rmse,
-        'mae': mae,
-        'predictions': predictions
-    }
 
 
 def train_svd_model(train_matrix, val_data, test_data, n_factors=50, save_path=None):
