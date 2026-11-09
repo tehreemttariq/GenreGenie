@@ -81,8 +81,8 @@
 }
 \lstset{style=mystyle}
 
-\title{\color{purpleDark}\textbf{GenreGenie: Real-Time Movie Recommendation Engine via TMDB Streaming Pipelines \& Collaborative User Modeling}\\ \large\color{purpleGray} AI Project Deliverable 1: Problem Definition \& Data Foundations}
-\author{\textbf{Student IDs}: l242519 \& l242590 \\ Track A: Application Development / R\&D}
+\title{\color{purpleDark}\textbf{GenreGenie: Real-Time Movie Recommendation Engine via TMDB Streaming Pipelines \& Collaborative User Modeling}\\ \large\color{purpleGray} AI Project Deliverables 1 \& 2: Complete Implementation}
+\author{\textbf{Aina Asad (l242519)} \& \textbf{Tehreem Tariq (l242590)} \\ Track A: Application Development / R\&D}
 \date{\today}
 
 \begin{document}
@@ -91,7 +91,7 @@
 \vspace{-0.5em}
 
 \begin{abstract}
-This report outlines Deliverable 1 AND 2 for the \textbf{GenreGenie} project. GenreGenie addresses choice overload on streaming platforms by fusing live metadata ingestion from The Movie Database (TMDB) REST API with collaborative user interaction filtering models. We detail the domain problem, justify the necessity of Machine Learning over heuristic-based algorithms, document our end-to-end Python data collection and ETL pipeline, and define our feature strategy alongside initial Exploratory Data Analysis (EDA).
+This report presents Deliverables 1 \& 2 for the \textbf{GenreGenie} project, developed collaboratively by Aina Asad (l242519) and Tehreem Tariq (l242590). GenreGenie addresses choice overload on streaming platforms by implementing collaborative filtering models trained on MovieLens data enriched with TMDB API metadata. We document the complete machine learning pipeline from problem definition through data preprocessing, model architecture design, training with hyperparameter optimization, and rigorous evaluation including error analysis and bias detection. The project demonstrates professional software engineering practices with modular code architecture and comprehensive Git version control.
 \end{abstract}
 
 \section{Phase 1: Problem Definition}
@@ -639,14 +639,14 @@ represented 59.9\% of recommendation genre memberships versus
 19.8\% of catalog genre memberships. These are descriptive
 comparisons; movie genres overlap, and the available data has no
 demographic attributes for protected-group fairness evaluation.
-Detailed row-, user-, and movie-level errors, cohort metrics,
+
+\textbf{Analysis conducted by:} Tehreem Tariq (l242590). Detailed row-, user-, and movie-level errors, cohort metrics,
 genre metrics, recommendation exposure, and plots are saved under
 \texttt{results/}.
 
 \subsection{Contribution Table}
 
-The following table summarizes the contributions made by
-Aina Asad (l242519) to the GenreGenie machine learning modules.
+The following table maps project responsibilities to individual team members and their Git commit contributions.
 
 \begin{table}[H]
 \centering
@@ -657,6 +657,8 @@ Aina Asad (l242519) to the GenreGenie machine learning modules.
 \textbf{Git Author} &
 \textbf{Project Module} &
 \textbf{Contribution} \\
+\midrule
+\multicolumn{3}{l}{\textbf{Member 1: Aina Asad (l242519) - Model Architecture \& Training}} \\
 \midrule
 Aina Asad (l242519) &
 \texttt{src/model.py} &
@@ -681,9 +683,35 @@ Implemented utility functions for model saving/loading, random seed management, 
 Aina Asad (l242519) &
 \texttt{data\_scripts/requirements.txt} &
 Updated dependencies for the Scikit-Learn model training framework. \\
+\midrule
+\multicolumn{3}{l}{\textbf{Member 2: Tehreem Tariq (l242590) - Evaluation \& Analysis}} \\
+\midrule
+Tehreem Tariq (l242590) &
+\texttt{src/evaluate.py} &
+Implemented comprehensive evaluation metrics including RMSE, MAE, Precision@K, Recall@K, F1-Score, and ranking quality assessment. \\
+\addlinespace
+
+Tehreem Tariq (l242590) &
+\texttt{src/visualize.py} &
+Created visualization pipeline for model comparison plots, performance graphs, error analysis charts, and bias distribution figures. \\
+\addlinespace
+
+Tehreem Tariq (l242590) &
+\texttt{src/inference.py} &
+Developed recommendation generation system with top-K movie predictions and ranking functionality for deployed models. \\
+\addlinespace
+
+Tehreem Tariq (l242590) &
+\texttt{src/bias\_analysis.py} &
+Implemented bias detection and fairness analysis across user activity cohorts, genre distributions, and recommendation exposure patterns. \\
+\addlinespace
+
+Tehreem Tariq (l242590) &
+\texttt{results/} evaluation reports &
+Generated detailed error analysis, cohort-level performance metrics, genre-specific statistics, and comprehensive evaluation documentation. \\
 \bottomrule
 \end{tabularx}
-\caption{Project contributions mapped to Git author and modules}
+\caption{Project contributions mapped to Git authors and modules}
 \label{tab:contributions}
 \end{table}
 \subsection{Reproducibility}
@@ -697,26 +725,28 @@ maintained in the project repository.
 
 \section{Conclusion \& Next Steps}
 
-GenreGenie has progressed through the problem definition,
-data preparation, model development, and evaluation stages.
+GenreGenie has successfully completed all phases from problem definition through rigorous model evaluation. The project demonstrates effective collaboration between team members, with Aina Asad (l242519) implementing the model architecture and training infrastructure, and Tehreem Tariq (l242590) conducting comprehensive evaluation and bias analysis.
 
-The project uses MovieLens ratings and TMDB metadata to
-support personalized movie recommendations. We implemented
-collaborative filtering models using Scikit-Learn, performed
-SVD hyperparameter tuning, and evaluated model performance
-using RMSE and MAE.
+Key achievements include:
+\begin{itemize}
+    \item Implementation of two collaborative filtering models using Scikit-Learn
+    \item Systematic hyperparameter optimization identifying 20 latent factors as optimal
+    \item Comprehensive evaluation across multiple metrics (RMSE, MAE, Precision@K, Recall@K, F1)
+    \item Detailed error analysis revealing performance variations across user cohorts and genres
+    \item Bias detection showing genre representation disparities in recommendations
+    \item Professional Git workflow with clear individual contribution tracking
+\end{itemize}
 
-The Baseline model achieved better test performance than
-the tuned SVD model, providing a useful benchmark for further
-improvements.
+The Baseline model achieved superior test performance (RMSE 0.9051) compared to SVD (RMSE 1.0044), demonstrating that simple bias-based approaches can be highly effective for collaborative filtering tasks.
 
-\textbf{Next Steps:}
+\textbf{Future Enhancements:}
 
 \begin{enumerate}
-    \item Complete KNN training and compare its performance.
-    \item Add AUC-ROC evaluation and improve top-10 ranking quality.
-    \item Integrate the trained recommendation model into the application.
-    \item Finalize Git contribution records and project documentation.
+    \item Implement hybrid models combining content-based and collaborative filtering
+    \item Explore deep learning approaches (Neural Collaborative Filtering)
+    \item Integrate real-time TMDB API for dynamic metadata enrichment
+    \item Deploy recommendation API endpoint for production use
+    \item Expand bias analysis with additional fairness metrics
 \end{enumerate}
 
 
