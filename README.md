@@ -173,6 +173,22 @@ GenreGenie/
 - `data/processed/user_features.csv`
 - `docs/figures/*.png`
 
+## Model Evaluation and Recommendations
+
+The evaluation pipeline compares the saved SVD and baseline models using
+validation/test RMSE and MAE, reports Precision@10/Recall@10, analyzes errors by
+user activity and genre, and measures recommendation exposure by genre and
+popularity. It writes the metrics and bias report to `results/` and eight plots
+to `results/figures/`.
+
+```bash
+python src/run_evaluation.py
+python src/inference.py --user-id 1 --model baseline --top-n 10
+```
+
+The available data has no demographic attributes, so the bias report covers
+activity, genre, and popularity rather than demographic fairness.
+
 ## Setup and Execution
 
 ### Install dependencies

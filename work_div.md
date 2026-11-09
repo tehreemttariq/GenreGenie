@@ -95,15 +95,15 @@
 ### **Member 2 Tasks (Evaluation & Analysis):**
 
 **Week 1:**
-- [ ] Create `src/evaluate.py` with metrics functions
-- [ ] Create train/val/test split function
-- [ ] Create `src/visualize.py` for plotting
+- [x] Create `src/evaluate.py` with metrics functions
+- [x] Create train/val/test split function
+- [x] Create `src/visualize.py` for plotting
 
 **Week 2:**
-- [ ] Create `src/inference.py` for recommendations
-- [ ] Create `src/bias_analysis.py` for fairness check
-- [ ] Generate all evaluation plots
-- [ ] Write error analysis section
+- [x] Create `src/inference.py` for recommendations
+- [x] Create `src/bias_analysis.py` for fairness check
+- [x] Generate all evaluation plots
+- [x] Write error analysis section
 
 **Deliverables:**
 - `results/evaluation_metrics.json` with all metrics
