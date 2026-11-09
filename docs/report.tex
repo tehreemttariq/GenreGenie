@@ -525,10 +525,10 @@ best tuned SVD configuration.
 \centering
 \begin{tabular}{lcccc}
 \toprule
-\textbf{Model} & \textbf{Val RMSE} & \textbf{Val MAE} &
+\textbf{Saved Model} & \textbf{Val RMSE} & \textbf{Val MAE} &
 \textbf{Test RMSE} & \textbf{Test MAE} \\
 \midrule
-SVD (20 factors) & 0.9905 & 0.7856 & 0.9952 & 0.7845 \\
+SVD (50 factors) & 0.9983 & 0.7915 & 1.0044 & 0.7918 \\
 Baseline & 0.9071 & 0.6937 & 0.9051 & 0.6910 \\
 \bottomrule
 \end{tabular}
@@ -536,10 +536,13 @@ Baseline & 0.9071 & 0.6937 & 0.9051 & 0.6910 \\
 \label{tab:model_comparison}
 \end{table}
 
-The Baseline model achieved lower RMSE and MAE than SVD.
-This indicates that the average-based model performed better
-on the current dataset. The results also show that increasing
-the number of SVD latent factors did not improve performance.
+The Baseline model achieved lower RMSE and MAE than the saved
+50-factor SVD model. The hyperparameter results also show that
+the best tested SVD configuration used 20 factors (validation
+RMSE 0.9905), but it still performed worse than the Baseline.
+The table above reports the saved model artifacts evaluated on
+the deterministic split; 14,504 of 15,126 test ratings had both
+a user and a movie present in the training set.
 
 \begin{figure}[H]
 \centering
@@ -557,11 +560,11 @@ the number of SVD latent factors did not improve performance.
     grid=major
 ]
 \addplot coordinates {
-    (SVD,0.9952)
+    (SVD,1.0044)
     (Baseline,0.9051)
 };
 \addplot coordinates {
-    (SVD,0.7845)
+    (SVD,0.7918)
     (Baseline,0.6910)
 };
 \legend{RMSE,MAE}
@@ -598,8 +601,14 @@ F1 = 2 \times
 \frac{Precision \times Recall}{Precision + Recall}
 \end{equation}
 
-These metrics will be calculated on the recommendation
-rankings after defining the relevance threshold and value of K.
+Recommendations are ranked by predicted rating, exclude movies
+seen in training, and use ratings of 4.0 or higher as relevant.
+On the held-out test set, the validation-selected Baseline
+achieved Precision@10 = 0.0005, Recall@10 = 0.0019, and
+F1@10 = 0.0008 across 585 users with at least one relevant
+held-out rating. These low ranking scores show that good rating
+regression metrics do not translate to strong top-10 retrieval
+quality for this baseline.
 
 \subsection{AUC-ROC}
 
@@ -609,29 +618,30 @@ thresholds. It can be calculated by defining positive ratings
 (e.g., ratings of 4.0 or above) as relevant and the remaining
 ratings as non-relevant.
 
-AUC-ROC results will be reported after this binary evaluation
-has been implemented.
+AUC-ROC is not included in this evaluation run; the reported
+ranking metrics assess the top-10 list directly.
 
 \subsection{Error Analysis and Bias Check}
 
 Error analysis helps identify cases where predicted ratings
 differ significantly from actual ratings.
 
-The following checks are planned:
+The error analysis is performed on held-out predictions from the
+Baseline model, selected using validation RMSE. The low-activity
+cohort had RMSE 1.0087 (910 ratings), compared with RMSE 0.8855
+(11,276 ratings) for the high-activity cohort. Among genres with
+at least 30 test ratings, Mystery had the lowest MAE (0.6447,
+1,122 ratings) and Horror the highest (0.7364, 1,054 ratings).
 
-\begin{itemize}
-    \item \textbf{Prediction Errors:} Identify movies and users
-    with large differences between actual and predicted ratings.
-    \item \textbf{User Activity Bias:} Compare model performance
-    for users with many ratings and users with few ratings.
-    \item \textbf{Genre Bias:} Compare recommendation performance
-    across different movie genres.
-    \item \textbf{Popularity Bias:} Check whether popular movies
-    receive more recommendations than less popular movies.
-\end{itemize}
-
-Demographic bias cannot currently be evaluated because
-demographic information is not included in the available dataset.
+The top 20\% most-rated movies accounted for 0.0\% of recommendation
+slots despite comprising 20.0\% of the candidate catalog. Drama
+represented 59.9\% of recommendation genre memberships versus
+19.8\% of catalog genre memberships. These are descriptive
+comparisons; movie genres overlap, and the available data has no
+demographic attributes for protected-group fairness evaluation.
+Detailed row-, user-, and movie-level errors, cohort metrics,
+genre metrics, recommendation exposure, and plots are saved under
+\texttt{results/}.
 
 \subsection{Contribution Table}
 
@@ -704,8 +714,7 @@ improvements.
 
 \begin{enumerate}
     \item Complete KNN training and compare its performance.
-    \item Implement Precision@K, Recall@K, F1-Score, and AUC-ROC.
-    \item Complete user activity, genre, and popularity bias checks.
+    \item Add AUC-ROC evaluation and improve top-10 ranking quality.
     \item Integrate the trained recommendation model into the application.
     \item Finalize Git contribution records and project documentation.
 \end{enumerate}
