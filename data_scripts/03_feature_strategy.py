@@ -4,8 +4,21 @@ import seaborn as sns
 import os
 from sklearn.preprocessing import StandardScaler, MinMaxScaler, LabelEncoder
 
-sns.set_style('whitegrid')
+LILAC = '#C8A2C8'
+PURPLE = '#8E5B9A'
+DEEP_PURPLE = '#6A3F7A'
+DARK_PURPLE = '#4A2E5D'
+PURPLE_CMAP = sns.color_palette(
+    [LILAC, PURPLE, DEEP_PURPLE, DARK_PURPLE], as_cmap=True
+)
+
+sns.set_style('whitegrid', {'grid.color': LILAC})
 plt.rcParams['figure.figsize'] = (10, 6)
+plt.rcParams['axes.edgecolor'] = DARK_PURPLE
+plt.rcParams['axes.labelcolor'] = DARK_PURPLE
+plt.rcParams['axes.titlecolor'] = DARK_PURPLE
+plt.rcParams['xtick.color'] = DARK_PURPLE
+plt.rcParams['ytick.color'] = DARK_PURPLE
 
 
 def load_cleaned_data():
@@ -103,7 +116,7 @@ def generate_eda_plots(movies_df, ratings_df, user_features):
 
     # 1. rating distribution
     plt.figure(figsize=(10, 6))
-    ratings_df['rating'].hist(bins=20, edgecolor='black')
+    ratings_df['rating'].hist(bins=20, color=LILAC, edgecolor='white')
     plt.title('Distribution of Movie Ratings', fontsize=16, fontweight='bold')
     plt.xlabel('Rating', fontsize=12)
     plt.ylabel('Frequency', fontsize=12)
@@ -115,7 +128,9 @@ def generate_eda_plots(movies_df, ratings_df, user_features):
     # 2. genre distribution
     plt.figure(figsize=(12, 6))
     movies_df['primary_genre'].value_counts().head(10).plot(
-        kind='bar', color='skyblue', edgecolor='black'
+        kind='bar',
+        color=[LILAC, PURPLE, DEEP_PURPLE, DARK_PURPLE] * 3,
+        edgecolor='white',
     )
     plt.title('Top 10 Movie Genres', fontsize=16, fontweight='bold')
     plt.xlabel('Genre', fontsize=12)
@@ -129,7 +144,7 @@ def generate_eda_plots(movies_df, ratings_df, user_features):
     # 3. user activity
     plt.figure(figsize=(10, 6))
     user_features['rating_count'].hist(
-        bins=50, edgecolor='black', color='coral'
+        bins=50, edgecolor='white', color=PURPLE
     )
     plt.title('User Activity Distribution', fontsize=16, fontweight='bold')
     plt.xlabel('Number of Ratings', fontsize=12)
@@ -146,7 +161,7 @@ def generate_eda_plots(movies_df, ratings_df, user_features):
 
     plt.figure(figsize=(10, 8))
     sns.heatmap(
-        corr, annot=True, cmap='coolwarm', center=0,
+        corr, annot=True, cmap=PURPLE_CMAP, center=0,
         square=True, linewidths=1,
         cbar_kws={"shrink": 0.8}
     )
@@ -163,7 +178,7 @@ def generate_eda_plots(movies_df, ratings_df, user_features):
 
     plt.scatter(
         sample['num_ratings'], sample['avg_rating'],
-        alpha=0.5, color='green'
+        alpha=0.5, color=DEEP_PURPLE
     )
     plt.title('Movie Popularity vs Average Rating',
               fontsize=16, fontweight='bold')
