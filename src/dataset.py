@@ -51,7 +51,25 @@ def create_user_item_matrix(ratings_df):
 
 
 def split_data(ratings_df, test_size=0.15, val_size=0.15, random_state=42):
-    #15% for testing and 85% for training + validation.
+    """Split ratings into disjoint train, validation, and test DataFrames.
+
+    ``test_size`` and ``val_size`` are fractions of the complete dataset.
+    """
+    required_columns = {'userId', 'movieId', 'rating'}
+    missing_columns = required_columns.difference(ratings_df.columns)
+    if missing_columns:
+        raise ValueError(
+            f"ratings_df is missing required columns: {sorted(missing_columns)}"
+        )
+    if len(ratings_df) < 3:
+        raise ValueError("At least three ratings are required to create three splits.")
+    if not 0 < test_size < 1:
+        raise ValueError("test_size must be greater than 0 and less than 1.")
+    if not 0 < val_size < 1:
+        raise ValueError("val_size must be greater than 0 and less than 1.")
+    if test_size + val_size >= 1:
+        raise ValueError("test_size + val_size must leave ratings for training.")
+
     print("\nSplitting data...")
     
     # First split is train+val vs test
@@ -68,6 +86,12 @@ def split_data(ratings_df, test_size=0.15, val_size=0.15, random_state=42):
         test_size=val_ratio,
         random_state=random_state
     )
+
+    if min(len(train_df), len(val_df), len(test_df)) == 0:
+        raise ValueError(
+            "The requested split sizes produced an empty partition; "
+            "provide more ratings or adjust the split fractions."
+        )
     
     print(f"Train: {len(train_df):,} ({len(train_df)/len(ratings_df)*100:.1f}%)")
     print(f"Val:   {len(val_df):,} ({len(val_df)/len(ratings_df)*100:.1f}%)")
