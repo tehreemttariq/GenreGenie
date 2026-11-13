@@ -1,16 +1,58 @@
 # Python
 __pycache__/
 *.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual Environment
+venv/
+env/
+ENV/
 
 # IDE
 .vscode/
 .claude/
+.idea/
+*.swp
+*.swo
+
+# Environment Variables & Secrets
+.env
+.env.local
+.env.*.local
+.streamlit/secrets.toml
+genregenie.db
+
+# Cache and Temporary Files
+.cache/
+*.cache
+.pytest_cache/
+.mypy_cache/
+*.tmp
 
 # LaTeX
 *.aux
 *.log
 *.out
+*.fls
+*.fdb_latexmk
 
 # Large data files
 *.json
 !data/raw/full_load_2005_2014.json
+
+# Logs
+logs/
+*.log
+
+# OS specific
+.DS_Store
+Thumbs.db
+*.swp
+
+# Streamlit specific
+.streamlit/
+streamlit_cache/
