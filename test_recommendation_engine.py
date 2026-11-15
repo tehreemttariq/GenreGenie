@@ -6,6 +6,7 @@ import pandas as pd
 import pytest
 from PIL import Image
 
+import recommendation_engine
 from recommendation_engine import (
     detect_poster_movie,
     find_prompt_movie_ids,
@@ -72,6 +73,21 @@ def test_era_parser_and_title_article_formatting(mini_catalog):
     assert find_prompt_movie_ids(
         "We watched The Notebook last night", mini_catalog
     ) == [3, 6]
+
+
+def test_empty_prompt_does_not_build_a_title_index(mini_catalog, monkeypatch):
+    def fail_if_indexed(_catalog):
+        raise AssertionError("an empty prompt should not scan every movie title")
+
+    monkeypatch.setattr(recommendation_engine, "_title_aliases", fail_if_indexed)
+
+    assert find_prompt_movie_ids("", mini_catalog) == []
+
+
+def test_title_alias_index_is_reused_for_repeated_searches(mini_catalog):
+    first = recommendation_engine._title_aliases(mini_catalog)
+
+    assert recommendation_engine._title_aliases(mini_catalog) is first
 
 
 @pytest.mark.parametrize(
@@ -141,6 +157,23 @@ def test_classic_romance_mood_applies_romance_and_pre_2005_filters(mini_catalog)
     ],
 )
 def test_discovery_era_ranges(era, expected_range):
+    profile = parse_preferences("", [era])
+
+    assert (profile.year_min, profile.year_max) == expected_range
+
+
+@pytest.mark.parametrize(
+    ("era", "expected_range"),
+    [
+        ("Classic (Before 1980)", (None, 1979)),
+        ("1980s", (1980, 1989)),
+        ("1990s", (1990, 1999)),
+        ("2000–2009", (2000, 2009)),
+        ("2010–2019", (2010, 2019)),
+        ("2020 & Newer", (2020, None)),
+    ],
+)
+def test_granular_discovery_era_ranges(era, expected_range):
     profile = parse_preferences("", [era])
 
     assert (profile.year_min, profile.year_max) == expected_range
@@ -244,6 +277,31 @@ def test_shuffle_samples_different_movies_from_top_30():
     assert all(
         movie["movie_id"] in top_candidate_ids for movie in first + refreshed
     )
+
+
+def test_unfiltered_shuffle_samples_from_the_eligible_pool():
+    catalog = prepare_catalog(
+        pd.DataFrame(
+            [
+                (movie_id, f"Surprise {movie_id} ({2000 + movie_id})", "Drama", 4.0)
+                for movie_id in range(1, 13)
+            ],
+            columns=["movieId", "title", "genres", "rating_prediction"],
+        )
+    )
+
+    recommendations = rank_recommendations(
+        catalog=catalog,
+        predictions=None,
+        prompt="",
+        top_n=3,
+        minimum_rating=3.0,
+        shuffle_seed=7,
+    )
+
+    assert len(recommendations) == 3
+    assert len({movie["movie_id"] for movie in recommendations}) == 3
+    assert {movie["pool_size"] for movie in recommendations} == {12}
 
 
 def test_previously_recommended_movies_are_skipped_when_fresh_matches_exist(
@@ -438,3 +496,46 @@ def test_match_percent_is_dynamic(mini_catalog):
 
     assert len({movie["match_pct"] for movie in recommendations}) > 1
     assert all(movie["match_pct"] != 80 for movie in recommendations)
+
+
+def test_find_similar_uses_match_strength_instead_of_diversity_jitter():
+    catalog = prepare_catalog(
+        pd.DataFrame(
+            [
+                (1, "Reference (2000)", "Action|Adventure"),
+                (2, "Exact Match (2001)", "Action|Adventure"),
+                (3, "Strong Match (2002)", "Action|Adventure|Sci-Fi"),
+                (4, "Loose Match (2003)", "Action"),
+                (5, "Unrelated (2004)", "Drama"),
+            ],
+            columns=["movieId", "title", "genres"],
+        )
+    )
+    predictions = {1: 4.0, 2: 3.5, 3: 4.8, 4: 5.0, 5: 5.0}
+
+    conservative = rank_recommendations(
+        catalog=catalog,
+        predictions=predictions,
+        prompt="",
+        seed_movie_ids={1},
+        top_n=5,
+        minimum_rating=0.5,
+        lambda_val=0.0,
+        minimum_match_pct=75,
+    )
+    high_diversity = rank_recommendations(
+        catalog=catalog,
+        predictions=predictions,
+        prompt="",
+        seed_movie_ids={1},
+        top_n=5,
+        minimum_rating=0.5,
+        lambda_val=5.0,
+        minimum_match_pct=75,
+    )
+
+    assert [movie["movie_id"] for movie in conservative] == [
+        movie["movie_id"] for movie in high_diversity
+    ]
+    assert [movie["movie_id"] for movie in conservative] == [2, 3]
+    assert all(movie["match_pct"] >= 75 for movie in conservative)
