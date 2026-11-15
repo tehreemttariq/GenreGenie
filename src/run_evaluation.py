@@ -149,7 +149,11 @@ def run_evaluation(project_root: str | Path = ROOT) -> dict[str, Any]:
 
     model_loaders = {
         "SVD": (
-            root / "models" / "svd_model.pkl",
+            (
+                root / "models" / "svd_model_evaluation.pkl"
+                if (root / "models" / "svd_model_evaluation.pkl").is_file()
+                else root / "models" / "svd_model.pkl"
+            ),
             MatrixFactorizationSVD.load,
         ),
         "Baseline": (
