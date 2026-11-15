@@ -62,7 +62,7 @@ def test_wikipedia_poster_and_summary_are_cached_and_upscaled(monkeypatch):
         "A first sentence. A second sentence. A third sentence. More."
     )
     assert details["source"] == "Wikipedia"
-    assert len(calls) == 1
+    assert len(calls) == 2
     assert calls[0][1]["headers"]["User-Agent"] == (
         "GenreGenie/2.0 (educational project)"
     )
@@ -185,6 +185,8 @@ def test_wikipedia_generator_search_supplies_page_image_and_extract(monkeypatch)
         if url.startswith(movie_metadata.WIKIPEDIA_SUMMARY):
             return FakeResponse(404, {})
         if url == movie_metadata.WIKIPEDIA_SEARCH:
+            if "pageimages" in kwargs["params"].get("prop", ""):
+                return FakeResponse(404, {})
             assert kwargs["params"]["action"] == "query"
             assert kwargs["params"]["list"] == "search"
             return FakeResponse(
@@ -200,6 +202,56 @@ def test_wikipedia_generator_search_supplies_page_image_and_extract(monkeypatch)
 
     assert details["poster_url"].endswith("500px.jpg")
     assert details["overview"] == "A plot from Wikipedia search."
+
+
+def test_wikipedia_infobox_supplies_credits_and_secondary_poster(monkeypatch):
+    def fake_get(url, **kwargs):
+        if url.startswith(movie_metadata.WIKIPEDIA_SUMMARY):
+            return FakeResponse(200, {"title": "Rare Film", "extract": "A plot summary."})
+        if url == movie_metadata.WIKIPEDIA_SEARCH:
+            return FakeResponse(
+                200,
+                {
+                    "query": {
+                        "pages": [
+                            {
+                                "thumbnail": {
+                                    "source": "https://upload.wikimedia.org/example/800px-poster.jpg"
+                                },
+                                "revisions": [
+                                    {
+                                        "slots": {
+                                            "main": {
+                                                "content": (
+                                                    "{{Infobox film\n"
+                                                    "| director = [[Jane Director]]\n"
+                                                    "| starring = {{plainlist|\n"
+                                                    "* [[Actor One]]\n"
+                                                    "* [[Actor Two]]\n"
+                                                    "}}\n"
+                                                    "| production companies = [[Studio A]]\n"
+                                                    "}}\n"
+                                                )
+                                            }
+                                        }
+                                    }
+                                ],
+                            }
+                        ]
+                    }
+                },
+            )
+        return FakeResponse(404, {})
+
+    _patch_session(monkeypatch, fake_get)
+    movie_metadata.fetch_movie_details.clear()
+
+    details = movie_metadata.fetch_movie_details("Rare Film", 2007)
+
+    assert details["poster_url"].endswith("500px-poster.jpg")
+    assert details["director"] == "Jane Director"
+    assert details["cast"] == ["Actor One", "Actor Two"]
+    assert details["production"] == "Studio A"
 
 
 def test_itunes_fallback_supplies_artwork_overview_and_runtime(monkeypatch):
@@ -317,7 +369,7 @@ def test_generated_poster_is_returned_when_public_sources_fail(monkeypatch):
     assert details["source"] == "generated"
 
 
-def test_generated_poster_includes_initials_year_and_genre_after_http_errors(monkeypatch):
+def test_generated_poster_is_a_clear_placeholder_after_http_errors(monkeypatch):
     def failing_get(*_args, **_kwargs):
         raise movie_metadata.requests.Timeout("test timeout")
 
@@ -332,9 +384,11 @@ def test_generated_poster_includes_initials_year_and_genre_after_http_errors(mon
     poster_svg = base64.b64decode(
         details["poster_url"].split(",", 1)[1]
     ).decode("utf-8")
-    assert ">N</text>" in poster_svg
+    assert "Notebook" in poster_svg
+    assert "ARTWORK UNAVAILABLE" in poster_svg
+    assert "GENREGENIE PICTURE HOUSE" not in poster_svg
     assert "2004" in poster_svg
-    assert "Romance" in poster_svg
+    assert "A GENREGENIE SELECTION" not in poster_svg
 
 
 def test_recommendation_metadata_is_fetched_concurrently(monkeypatch):
