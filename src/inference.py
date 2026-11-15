@@ -115,20 +115,10 @@ def load_recommender(
     model_name: str = "baseline",
     project_root: str | Path | None = None,
 ) -> MovieRecommender:
-    """Load a saved SVD or baseline model with mappings from the training split."""
+    """Load a saved model with its persisted mappings when available."""
     root = Path(project_root) if project_root else Path(__file__).resolve().parents[1]
     ratings = pd.read_csv(root / "data" / "cleaned" / "ratings_cleaned.csv")
     movies = pd.read_csv(root / "data" / "cleaned" / "movies_cleaned.csv")
-    training_ratings, _, _ = split_data(ratings)
-
-    user_to_idx = {
-        int(user_id): index
-        for index, user_id in enumerate(training_ratings["userId"].unique())
-    }
-    movie_to_idx = {
-        int(movie_id): index
-        for index, movie_id in enumerate(training_ratings["movieId"].unique())
-    }
     model_loaders = {
         "baseline": (
             root / "models" / "baseline_model.pkl",
@@ -143,6 +133,30 @@ def load_recommender(
     if not model_path.is_file():
         raise FileNotFoundError(f"Trained model not found: {model_path}")
     model = loader(str(model_path))
+    if (
+        model_name == "svd"
+        and getattr(model, "user_to_idx", None)
+        and getattr(model, "movie_to_idx", None)
+    ):
+        user_to_idx = {
+            int(user_id): int(index)
+            for user_id, index in model.user_to_idx.items()
+        }
+        movie_to_idx = {
+            int(movie_id): int(index)
+            for movie_id, index in model.movie_to_idx.items()
+        }
+        training_ratings = ratings
+    else:
+        training_ratings, _, _ = split_data(ratings)
+        user_to_idx = {
+            int(user_id): index
+            for index, user_id in enumerate(training_ratings["userId"].unique())
+        }
+        movie_to_idx = {
+            int(movie_id): index
+            for index, movie_id in enumerate(training_ratings["movieId"].unique())
+        }
     expected_shape = (len(user_to_idx), len(movie_to_idx))
     model_shape = (
         (len(model.user_factors), len(model.item_factors))
@@ -154,6 +168,11 @@ def load_recommender(
             f"Saved {model_name} model shape {model_shape} does not match the "
             f"current training split {expected_shape}; retrain the model."
         )
+    if model_name == "svd" and (
+        sorted(user_to_idx.values()) != list(range(model_shape[0]))
+        or sorted(movie_to_idx.values()) != list(range(model_shape[1]))
+    ):
+        raise ValueError("Saved SVD model mappings are not contiguous.")
     return MovieRecommender(
         model, user_to_idx, movie_to_idx, training_ratings, movies
     )
