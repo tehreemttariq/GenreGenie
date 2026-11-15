@@ -29,9 +29,13 @@ GENRE_SYNONYMS = {
     "Documentary": ("documentary", "real life"),
     "Drama": ("drama", "dramatic"),
     "Fantasy": ("fantasy", "magical"),
+    "Family": ("family", "family film"),
+    "History": ("history", "historical"),
     "Mystery": ("mystery", "whodunit"),
+    "Music": ("music", "musical"),
     "Sci-Fi": ("sci fi", "sci-fi", "science fiction", "scifi"),
     "Thriller": ("thriller", "suspense", "edge of your seat"),
+    "TV Movie": ("tv movie", "made for television"),
     "War": ("war",),
     "Western": ("western",),
     "Musical": ("musical",),
@@ -63,6 +67,12 @@ MOOD_GENRE_GROUPS = {
     "Action & Adventure": (frozenset({"Action", "Adventure"}),),
 }
 ERA_RANGES = {
+    "Classic (Before 1980)": (None, 1979, "Classic (Before 1980)"),
+    "1980s": (1980, 1989, "1980s"),
+    "1990s": (1990, 1999, "1990s"),
+    "2000–2009": (2000, 2009, "2000–2009"),
+    "2010–2019": (2010, 2019, "2010–2019"),
+    "2020 & Newer": (2020, None, "2020 & Newer"),
     "Before 1995": (None, 1994, "Before 1995"),
     "1995–2005": (1995, 2005, "1995–2005"),
     "2006+": (2006, None, "2006+"),
@@ -78,14 +88,18 @@ KNOWN_GENRES = {
     "Documentary",
     "Drama",
     "Fantasy",
+    "Family",
     "Film-Noir",
+    "History",
     "Horror",
     "IMAX",
+    "Music",
     "Musical",
     "Mystery",
     "Romance",
     "Sci-Fi",
     "Thriller",
+    "TV Movie",
     "War",
     "Western",
 }
@@ -389,6 +403,10 @@ def parse_preferences(
 
 
 def _title_aliases(catalog: pd.DataFrame) -> dict[str, list[int]]:
+    cached_aliases = catalog.attrs.get("_genre_genie_title_aliases")
+    if isinstance(cached_aliases, dict):
+        return cached_aliases
+
     aliases: dict[str, list[int]] = {}
     for row in catalog.itertuples(index=False):
         raw_title = str(row.display_title)
@@ -408,11 +426,14 @@ def _title_aliases(catalog: pd.DataFrame) -> dict[str, list[int]]:
             alias = normalize_search_text(variant)
             if len(alias) >= 3:
                 aliases.setdefault(alias, []).append(int(row.movieId))
+    catalog.attrs["_genre_genie_title_aliases"] = aliases
     return aliases
 
 
 def find_prompt_movie_ids(prompt: str, catalog: pd.DataFrame) -> list[int]:
     normalized_prompt = normalize_search_text(prompt)
+    if not normalized_prompt:
+        return []
     padded_prompt = f" {normalized_prompt} "
     matches: list[tuple[int, int]] = []
     for alias, movie_ids in _title_aliases(catalog).items():
@@ -500,10 +521,13 @@ def _genre_sets_for_movie_ids(
     catalog: pd.DataFrame,
     movie_ids: set[int],
 ) -> list[set[str]]:
+    if not movie_ids:
+        return []
     return [
-        {str(genre).casefold() for genre in row.genre_tags}
-        for row in catalog.itertuples(index=False)
-        if int(row.movieId) in movie_ids
+        {str(genre).casefold() for genre in genres}
+        for genres in catalog.loc[
+            catalog["movieId"].isin(movie_ids), "genre_tags"
+        ]
     ]
 
 
@@ -514,6 +538,303 @@ def _jaccard(left: set[str], right: set[str]) -> float:
 
 def _movie_year(value: Any) -> int | None:
     return int(value) if pd.notna(value) else None
+
+
+def _shuffle_unfiltered_catalog(
+    catalog: pd.DataFrame,
+    predictions: dict[int, float] | None,
+    excluded: set[int],
+    seen: set[int],
+    requested_count: int,
+    minimum_rating: float,
+    minimum_match_pct: int | None,
+    shuffle_seed: int,
+    era_label: str | None,
+) -> list[dict[str, Any]]:
+    catalog_ids = catalog["movieId"].to_numpy(dtype=int)
+    ratings = pd.to_numeric(
+        catalog.get("rating_prediction", pd.Series(np.nan, index=catalog.index)),
+        errors="coerce",
+    ).to_numpy(dtype=float, copy=True)
+    if predictions is not None:
+        model_ratings = pd.to_numeric(
+            catalog["movieId"].map(predictions), errors="coerce"
+        ).to_numpy(dtype=float)
+        ratings = np.where(np.isfinite(model_ratings), model_ratings, ratings)
+    ratings[~np.isfinite(ratings)] = 0.5
+
+    match_pcts = np.rint(np.clip((ratings - 0.5) / 4.5, 0.0, 1.0) * 100).astype(int)
+    available_mask = ~np.isin(catalog_ids, tuple(excluded))
+    if minimum_match_pct is not None:
+        available_mask &= match_pcts >= minimum_match_pct
+
+    def mask_at_rating(threshold: float) -> np.ndarray:
+        return available_mask & (ratings >= threshold)
+
+    best_mask = mask_at_rating(float(minimum_rating))
+    best_count = int(np.count_nonzero(best_mask))
+    fallback_notice = ""
+    if minimum_match_pct is None and best_count < requested_count:
+        for relaxed_rating in (
+            max(0.5, float(minimum_rating) - 0.5),
+            max(0.5, float(minimum_rating) - 1.0),
+            0.5,
+        ):
+            relaxed_mask = mask_at_rating(relaxed_rating)
+            relaxed_count = int(np.count_nonzero(relaxed_mask))
+            if relaxed_count > best_count:
+                best_mask = relaxed_mask
+                best_count = relaxed_count
+            if relaxed_count >= requested_count:
+                best_mask = relaxed_mask
+                best_count = relaxed_count
+                if relaxed_rating < float(minimum_rating):
+                    fallback_notice = (
+                        "Lowered the rating threshold slightly to fill your picks."
+                    )
+                break
+
+        if best_count < requested_count:
+            all_ratings_mask = mask_at_rating(0.5)
+            all_ratings_count = int(np.count_nonzero(all_ratings_mask))
+            if all_ratings_count > best_count:
+                best_mask = all_ratings_mask
+                best_count = all_ratings_count
+                fallback_notice = (
+                    "Expanded the era and rating threshold; showing the best available picks."
+                )
+        if best_count and best_count < requested_count and not fallback_notice:
+            fallback_notice = (
+                f"Showing {best_count} available picks; no more catalog titles "
+                "matched the relaxed filters."
+            )
+
+    eligible_positions = np.flatnonzero(best_mask)
+    fresh_positions = [
+        int(position)
+        for position in eligible_positions
+        if int(catalog_ids[position]) not in seen
+    ]
+    seen_positions = [
+        int(position)
+        for position in eligible_positions
+        if int(catalog_ids[position]) in seen
+    ]
+    rng = random.Random(int(shuffle_seed))
+    fresh_count = min(requested_count, len(fresh_positions))
+    chosen_positions = rng.sample(fresh_positions, k=fresh_count)
+    seen_count = min(requested_count - fresh_count, len(seen_positions))
+    if seen_count:
+        chosen_positions.extend(rng.sample(seen_positions, k=seen_count))
+
+    selected_rows = catalog.iloc[chosen_positions].itertuples(index=False)
+    recommendations: list[dict[str, Any]] = []
+    for position, row in zip(chosen_positions, selected_rows):
+        rating = float(ratings[position])
+        rating_source = getattr(row, "rating_source", None)
+        if not isinstance(rating_source, str) or not rating_source.strip():
+            rating_source = "SVD" if predictions and int(row.movieId) in predictions else "Catalog"
+        reason = (
+            f"{era_label} era."
+            if era_label
+            else "strong SVD predicted rating."
+        )
+        recommendations.append(
+            {
+                "movie_id": int(row.movieId),
+                "title": row.display_title,
+                "formatted_title": row.formatted_title,
+                "year": _movie_year(row.year),
+                "genres": list(row.genre_tags),
+                "predicted_rating": rating,
+                "rating_source": rating_source.strip(),
+                "tmdb_id": getattr(row, "tmdb_id", None),
+                "poster_url": getattr(row, "poster_url", ""),
+                "overview": getattr(row, "overview", ""),
+                "director": getattr(row, "director", None),
+                "cast": getattr(row, "cast", None),
+                "production": getattr(row, "production", None),
+                "match_pct": int(match_pcts[position]),
+                "rank_score": rating,
+                "genre_score": None,
+                "era_score": None,
+                "matching_groups": 0,
+                "seen_before": int(row.movieId) in seen,
+                "pool_size": best_count,
+                "reason": reason,
+                "fallback_notice": fallback_notice,
+            }
+        )
+    return recommendations
+
+
+def _rank_similar_movies(
+    catalog: pd.DataFrame,
+    predictions: dict[int, float] | None,
+    seed_genres: list[set[str]],
+    seed_decades: set[int],
+    excluded: set[int],
+    seen: set[int],
+    requested_count: int,
+    minimum_rating: float,
+    minimum_match_pct: int,
+    shuffle_seed: int | None,
+) -> list[dict[str, Any]]:
+    movie_ids = catalog["movieId"].to_numpy(dtype=int)
+    ratings = pd.to_numeric(
+        catalog.get("rating_prediction", pd.Series(np.nan, index=catalog.index)),
+        errors="coerce",
+    ).to_numpy(dtype=float, copy=True)
+    if predictions is not None:
+        model_ratings = pd.to_numeric(
+            catalog["movieId"].map(predictions), errors="coerce"
+        ).to_numpy(dtype=float)
+        ratings = np.where(np.isfinite(model_ratings), model_ratings, ratings)
+    ratings[~np.isfinite(ratings)] = 0.5
+
+    genre_counts = catalog["genre_tags"].map(len).to_numpy(dtype=int)
+    normalized_genres = (
+        catalog["_genres_norm"]
+        if "_genres_norm" in catalog.columns
+        else catalog["genre_tags"].map(
+            lambda genres: "|" + "|".join(
+                str(genre).casefold() for genre in genres
+            ) + "|"
+        )
+    )
+    genre_similarity = np.zeros(len(catalog), dtype=float)
+    for seed_set in seed_genres:
+        pattern = r"(?=\|(?:" + "|".join(
+            re.escape(genre) for genre in sorted(seed_set)
+        ) + r")\|)"
+        shared_genres = normalized_genres.str.count(pattern).to_numpy(dtype=int)
+        union_counts = len(seed_set) + genre_counts - shared_genres
+        similarity = np.divide(
+            shared_genres,
+            union_counts,
+            out=np.zeros(len(catalog), dtype=float),
+            where=union_counts > 0,
+        )
+        genre_similarity = np.maximum(genre_similarity, similarity)
+
+    years = pd.to_numeric(catalog["year"], errors="coerce").to_numpy(dtype=float)
+    era_scores = np.full(len(catalog), np.nan, dtype=float)
+    valid_years = np.isfinite(years)
+    if seed_decades:
+        era_scores[valid_years] = 0.0
+        movie_decades = np.floor_divide(years[valid_years].astype(int), 10)
+        for decade in seed_decades:
+            era_scores[valid_years] = np.maximum(
+                era_scores[valid_years],
+                np.maximum(0.0, 1.0 - np.abs(movie_decades - decade) * 0.25),
+            )
+
+    rating_scores = np.clip((ratings - 0.5) / 4.5, 0.0, 1.0)
+    has_era_score = np.isfinite(era_scores)
+    match_scores = (
+        0.15 * rating_scores
+        + 0.65 * genre_similarity
+        + 0.2 * np.nan_to_num(era_scores, nan=0.0)
+    ) / (0.8 + 0.2 * has_era_score)
+    match_pcts = np.rint(match_scores * 100).astype(int)
+
+    eligible = (
+        (ratings >= float(minimum_rating))
+        & (match_pcts >= int(minimum_match_pct))
+        & ~np.isin(movie_ids, tuple(excluded))
+    )
+    positions = np.flatnonzero(eligible)
+    seen_ids = set(seen)
+    title_values = catalog["display_title"].to_numpy()
+    positions = sorted(
+        positions,
+        key=lambda position: (
+            int(movie_ids[position] in seen_ids),
+            -int(match_pcts[position]),
+            -genre_similarity[position],
+            -(
+                era_scores[position]
+                if np.isfinite(era_scores[position])
+                else 0.0
+            ),
+            -ratings[position],
+            str(title_values[position]).casefold(),
+        ),
+    )
+    pool_size = len(positions)
+    fresh_positions = [
+        position for position in positions if movie_ids[position] not in seen_ids
+    ]
+    seen_positions = [
+        position for position in positions if movie_ids[position] in seen_ids
+    ]
+    if shuffle_seed is None:
+        chosen_positions = positions[:requested_count]
+    else:
+        rng = random.Random(int(shuffle_seed))
+        fresh_count = min(requested_count, len(fresh_positions))
+        chosen_positions = rng.sample(fresh_positions, k=fresh_count)
+        remaining_count = min(
+            requested_count - fresh_count, len(seen_positions)
+        )
+        if remaining_count:
+            chosen_positions.extend(
+                rng.sample(seen_positions, k=remaining_count)
+            )
+
+    recommendations: list[dict[str, Any]] = []
+    for position in chosen_positions:
+        row = catalog.iloc[position]
+        movie_genres = {
+            str(genre).casefold() for genre in row["genre_tags"]
+        }
+        shared_genres = sorted(
+            {
+                genre.title()
+                for seed_set in seed_genres
+                for genre in movie_genres.intersection(seed_set)
+            }
+        )
+        reason = "Shares " + " + ".join(shared_genres) + " with your reference."
+        rating_source = row.get("rating_source")
+        if not isinstance(rating_source, str) or not rating_source.strip():
+            rating_source = (
+                "SVD"
+                if predictions is not None and int(row["movieId"]) in predictions
+                else "Catalog"
+            )
+        recommendations.append(
+            {
+                "movie_id": int(movie_ids[position]),
+                "title": row["display_title"],
+                "formatted_title": row["formatted_title"],
+                "year": _movie_year(row["year"]),
+                "genres": list(row["genre_tags"]),
+                "predicted_rating": float(ratings[position]),
+                "rating_source": rating_source.strip(),
+                "tmdb_id": row.get("tmdb_id"),
+                "poster_url": row.get("poster_url", ""),
+                "overview": row.get("overview", ""),
+                "director": row.get("director"),
+                "cast": row.get("cast"),
+                "production": row.get("production"),
+                "match_pct": int(match_pcts[position]),
+                "rank_score": float(match_scores[position]),
+                "final_score": float(match_scores[position]),
+                "genre_score": float(genre_similarity[position]),
+                "era_score": (
+                    float(era_scores[position])
+                    if np.isfinite(era_scores[position])
+                    else None
+                ),
+                "matching_groups": 0,
+                "seen_before": int(movie_ids[position]) in seen_ids,
+                "pool_size": pool_size,
+                "reason": reason,
+                "fallback_notice": "",
+            }
+        )
+    return recommendations
 
 
 def rank_recommendations(
@@ -530,6 +851,7 @@ def rank_recommendations(
     seen_movie_ids: set[int] | None = None,
     selected_genres: tuple[str, ...] | list[str] | None = None,
     era: str = "Any Era",
+    minimum_match_pct: int | None = None,
 ) -> list[dict[str, Any]]:
     if selected_genres is None:
         profile_moods = list(mood_labels)
@@ -542,21 +864,49 @@ def rank_recommendations(
     excluded = set(excluded_movie_ids or ()) | seeds
     seen = set(seen_movie_ids or ())
     requested_count = max(1, int(top_n))
-    catalog_ratings = (
-        pd.to_numeric(catalog["rating_prediction"], errors="coerce")
-        if "rating_prediction" in catalog.columns
-        else pd.Series(np.nan, index=catalog.index)
-    )
-    ratings_by_movie_id = dict(
-        zip(catalog["movieId"].astype(int), catalog_ratings)
-    )
+    if (
+        shuffle_seed is not None
+        and not seeds
+        and not profile.genre_groups
+        and profile.year_min is None
+        and profile.year_max is None
+    ):
+        return _shuffle_unfiltered_catalog(
+            catalog=catalog,
+            predictions=predictions,
+            excluded=excluded,
+            seen=seen,
+            requested_count=requested_count,
+            minimum_rating=minimum_rating,
+            minimum_match_pct=minimum_match_pct,
+            shuffle_seed=shuffle_seed,
+            era_label=profile.era_label,
+        )
     seed_genres = _genre_sets_for_movie_ids(catalog, seeds)
     seed_years = [
-        _movie_year(row.year)
-        for row in catalog.itertuples(index=False)
-        if int(row.movieId) in seeds
+        _movie_year(year)
+        for year in catalog.loc[catalog["movieId"].isin(seeds), "year"]
     ]
     seed_decades = {seed_year // 10 for seed_year in seed_years if seed_year}
+    if (
+        minimum_match_pct is not None
+        and seed_genres
+        and not profile.genre_groups
+        and profile.year_min is None
+        and profile.year_max is None
+    ):
+        return _rank_similar_movies(
+            catalog=catalog,
+            predictions=predictions,
+            seed_genres=seed_genres,
+            seed_decades=seed_decades,
+            excluded=excluded,
+            seen=seen,
+            requested_count=requested_count,
+            minimum_rating=minimum_rating,
+            minimum_match_pct=minimum_match_pct,
+            shuffle_seed=shuffle_seed,
+        )
     preference_genres = {
         genre.casefold() for group in profile.genre_groups for genre in group
     }
@@ -578,21 +928,32 @@ def rank_recommendations(
                 str(genre).casefold(), regex=False, na=False
             )
         matching_group_counts += group_matches.astype(int)
-    group_counts_by_id = dict(
-        zip(catalog["movieId"].astype(int), matching_group_counts.astype(int))
+    minimum_candidate_group_matches = (
+        1 if len(profile.genre_groups) > 1 else len(profile.genre_groups)
     )
-
+    matching_group_values = matching_group_counts.to_numpy(dtype=int)
+    candidate_mask = matching_group_values >= minimum_candidate_group_matches
+    if excluded:
+        candidate_mask &= ~catalog["movieId"].isin(excluded).to_numpy()
+    candidate_positions = np.flatnonzero(candidate_mask)
     candidates: list[dict[str, Any]] = []
-    for row in catalog.itertuples(index=False):
+    candidate_rows = catalog.iloc[candidate_positions].itertuples(index=False)
+    for row_position, row in zip(candidate_positions, candidate_rows):
         movie_id = int(row.movieId)
-        if movie_id in excluded:
-            continue
-        movie_genres = {str(genre).casefold() for genre in row.genre_tags}
-        matching_groups = group_counts_by_id.get(movie_id, 0)
+        matching_groups = int(matching_group_values[row_position])
         year = _movie_year(row.year)
-        seed_similarity = max(
-            (_jaccard(movie_genres, seed_set) for seed_set in seed_genres),
-            default=0.0,
+        movie_genres = (
+            {str(genre).casefold() for genre in row.genre_tags}
+            if seed_genres
+            else set()
+        )
+        seed_similarity = (
+            max(
+                (_jaccard(movie_genres, seed_set) for seed_set in seed_genres),
+                default=0.0,
+            )
+            if seed_genres
+            else 0.0
         )
         if profile.genre_groups:
             genre_score = matching_groups / len(profile.genre_groups)
@@ -639,7 +1000,7 @@ def rank_recommendations(
         prediction_value = (
             predictions.get(movie_id)
             if predictions is not None and movie_id in predictions
-            else ratings_by_movie_id.get(movie_id, np.nan)
+            else getattr(row, "rating_prediction", np.nan)
         )
         try:
             predicted_rating = float(prediction_value)
@@ -647,6 +1008,16 @@ def rank_recommendations(
             predicted_rating = 0.5
         if not np.isfinite(predicted_rating):
             predicted_rating = 0.5
+        rating_source_value = getattr(row, "rating_source", None)
+        rating_source = (
+            rating_source_value.strip()
+            if isinstance(rating_source_value, str) and rating_source_value.strip()
+            else (
+                "SVD"
+                if predictions is not None and movie_id in predictions
+                else "Catalog"
+            )
+        )
         rating_score = min(1.0, max(0.0, (predicted_rating - 0.5) / 4.5))
         components: list[tuple[float, float]] = [(rating_score, 0.15)]
         if genre_score is not None:
@@ -656,6 +1027,9 @@ def rank_recommendations(
         match_score = sum(score * weight for score, weight in components) / sum(
             weight for _, weight in components
         )
+        match_pct = round(match_score * 100)
+        if minimum_match_pct is not None and match_pct < minimum_match_pct:
+            continue
         rank_score = predicted_rating
         if genre_score is not None:
             rank_score += 0.6 * genre_score
@@ -669,7 +1043,14 @@ def rank_recommendations(
                 "year": year,
                 "genres": list(row.genre_tags),
                 "predicted_rating": predicted_rating,
-                "match_pct": round(match_score * 100),
+                "rating_source": rating_source,
+                "tmdb_id": getattr(row, "tmdb_id", None),
+                "poster_url": getattr(row, "poster_url", ""),
+                "overview": getattr(row, "overview", ""),
+                "director": getattr(row, "director", None),
+                "cast": getattr(row, "cast", None),
+                "production": getattr(row, "production", None),
+                "match_pct": match_pct,
                 "rank_score": rank_score,
                 "genre_score": genre_score,
                 "era_score": era_score,
@@ -714,16 +1095,17 @@ def rank_recommendations(
     )
     fallback_notice = ""
     genre_match_threshold = required_genre_matches
-    if len(best_candidates) < requested_count and required_genre_matches > 1:
-        genre_match_threshold = 1
-        genre_fallback = filter_candidates(1, 0, float(minimum_rating))
-        if len(genre_fallback) > len(best_candidates):
-            best_candidates = genre_fallback
-            fallback_notice = (
-                "Relaxed the genre intersection to include movies matching any selected genre."
-            )
+    if minimum_match_pct is None:
+        if len(best_candidates) < requested_count and required_genre_matches > 1:
+            genre_match_threshold = 1
+            genre_fallback = filter_candidates(1, 0, float(minimum_rating))
+            if len(genre_fallback) > len(best_candidates):
+                best_candidates = genre_fallback
+                fallback_notice = (
+                    "Relaxed the genre intersection to include movies matching any selected genre."
+                )
 
-    if len(best_candidates) < requested_count:
+    if minimum_match_pct is None and len(best_candidates) < requested_count:
         relaxation_steps = (
             (3, max(0.5, float(minimum_rating) - 0.5)),
             (7, max(0.5, float(minimum_rating) - 1.0)),
@@ -772,7 +1154,12 @@ def rank_recommendations(
                     if part
                 )
 
-        if best_candidates and len(best_candidates) < requested_count and not fallback_notice:
+        if (
+            minimum_match_pct is None
+            and best_candidates
+            and len(best_candidates) < requested_count
+            and not fallback_notice
+        ):
             fallback_notice = (
                 f"Showing {len(best_candidates)} available picks; no more catalog titles "
                 "matched the relaxed filters."
