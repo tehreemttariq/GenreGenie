@@ -21,6 +21,8 @@ class MatrixFactorizationSVD:
         self.global_mean = None
         self.user_means = None
         self.item_means = None
+        self.user_to_idx = None
+        self.movie_to_idx = None
     
     def fit(self, ratings_matrix):
         #Trains the model using the ratings matrix.
@@ -65,7 +67,9 @@ class MatrixFactorizationSVD:
             'user_factors': self.user_factors,
             'item_factors': self.item_factors,
             'global_mean': self.global_mean,
-            'svd': self.svd
+            'svd': self.svd,
+            'user_to_idx': self.user_to_idx,
+            'movie_to_idx': self.movie_to_idx,
         }
         with open(path, 'wb') as f:
             pickle.dump(model_data, f)
@@ -81,6 +85,8 @@ class MatrixFactorizationSVD:
         model.item_factors = model_data['item_factors']
         model.global_mean = model_data['global_mean']
         model.svd = model_data['svd']
+        model.user_to_idx = model_data.get('user_to_idx')
+        model.movie_to_idx = model_data.get('movie_to_idx')
         
         return model
 
