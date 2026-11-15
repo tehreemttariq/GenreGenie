@@ -43,6 +43,8 @@ genregenie.db
 # Large data files
 *.json
 !data/raw/full_load_2005_2014.json
+data/processed/tmdb_catalog.csv
+data/processed/tmdb_catalog_manifest.json
 
 # Logs
 logs/
