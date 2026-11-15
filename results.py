@@ -51,7 +51,7 @@ def display_movie_card(movie_id, score, show_actions=True):
             else:
                 st.markdown(
                     f"<div style='background:#333; height:200px; display:flex; align-items:center; justify-content:center; border-radius:8px;'>"
-                    f"<p style='color:#999; text-align:center;'>🎬<br>{title}</p>"
+                    f"<p style='color:#999; text-align:center;'>Poster<br>{title}</p>"
                     f"</div>",
                     unsafe_allow_html=True
                 )
@@ -60,19 +60,19 @@ def display_movie_card(movie_id, score, show_actions=True):
             # Title & year
             st.markdown(f"**{title}**")
             if year:
-                st.caption(f"📅 {year}")
+                st.caption(f"Year · {year}")
             
             # Genres
             if genres:
                 genre_text = " • ".join(genres[:3])
-                st.caption(f"🎭 {genre_text}")
+                st.caption(f"Genres · {genre_text}")
             
             # Rating & match score
             col_a, col_b = st.columns(2)
             with col_a:
                 if tmdb_data:
                     rating = tmdb_data.get('vote_average', 0) / 2
-                    st.metric("Rating", f"{rating:.1f}⭐")
+                    st.metric("Rating / 5", f"{rating:.1f}")
                 else:
                     st.metric("Rating", "N/A")
             
@@ -82,19 +82,19 @@ def display_movie_card(movie_id, score, show_actions=True):
             
             # Synopsis
             if tmdb_data and tmdb_data.get('overview'):
-                with st.expander("📖 Synopsis"):
+                with st.expander("Synopsis"):
                     st.write(tmdb_data['overview'])
             
             # Action buttons
             if show_actions:
                 col_x, col_y = st.columns(2)
                 with col_x:
-                    if st.button("⭐ Rate", key=f"rate_{movie_id}", use_container_width=True):
+                    if st.button("Rate", key=f"rate_{movie_id}", use_container_width=True):
                         st.session_state.rating_movie_id = movie_id
                 
                 with col_y:
-                    if st.button("📋 Watchlist", key=f"watch_{movie_id}", use_container_width=True):
-                        st.success("Added!")
+                    if st.button("Watchlist", key=f"watch_{movie_id}", use_container_width=True):
+                        st.success("Added to your watchlist.")
 
 def display_recommendation_grid(recommendations, show_actions=True):
     """Display recommendations in a grid"""
@@ -102,7 +102,7 @@ def display_recommendation_grid(recommendations, show_actions=True):
         st.warning("No recommendations found")
         return
     
-    st.success(f"✨ Found {len(recommendations)} recommendations")
+    st.success(f"Found {len(recommendations)} recommendations")
     
     # Display in 3-column grid
     cols = st.columns(3, gap="medium")
