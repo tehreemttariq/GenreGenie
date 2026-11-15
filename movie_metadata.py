@@ -18,6 +18,7 @@ import streamlit as st
 LOGGER = logging.getLogger(__name__)
 WIKIPEDIA_SUMMARY = "https://en.wikipedia.org/api/rest_v1/page/summary/"
 WIKIPEDIA_SEARCH = "https://en.wikipedia.org/w/api.php"
+WIKIPEDIA_PAGE_API = "https://en.wikipedia.org/w/api.php"
 ITUNES_SEARCH = "https://itunes.apple.com/search"
 TVMAZE_SEARCH = "https://api.tvmaze.com/singlesearch/shows"
 WIKIDATA_API = "https://www.wikidata.org/w/api.php"
@@ -70,7 +71,10 @@ def _valid_poster_url(url: Any) -> str:
     return re.sub(r"/\d+px-", "/500px-", url)
 
 
-def _summary_from_page(page_title: str, session: requests.Session) -> dict[str, str] | None:
+def _summary_from_page(
+    page_title: str,
+    session: requests.Session,
+) -> dict[str, Any] | None:
     slug = quote(page_title.replace(" ", "_"), safe="_()")
     try:
         response = session.get(
@@ -92,6 +96,7 @@ def _summary_from_page(page_title: str, session: requests.Session) -> dict[str, 
     extract = data.get("extract")
     return {
         "poster_url": image_url,
+        "page_title": str(data.get("title") or page_title),
         "overview": (
             _normalize_overview(extract)
             if isinstance(extract, str) and extract
@@ -100,25 +105,133 @@ def _summary_from_page(page_title: str, session: requests.Session) -> dict[str, 
     }
 
 
+def _wikitext_names(value: str, limit: int) -> list[str]:
+    cleaned = re.sub(r"<ref\b[^>]*>.*?</ref>", "", value, flags=re.IGNORECASE | re.DOTALL)
+    cleaned = re.sub(r"<ref\b[^>]*/\s*>", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"<br\s*/?>", ",", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(
+        r"\{\{(?:plainlist|unbulleted list|ubl|hlist)\s*\|",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    cleaned = re.sub(r"\{\{[^{}]*\}\}", "", cleaned)
+    cleaned = re.sub(r"\[\[([^|\]]+)\|([^\]]+)\]\]", r"\2", cleaned)
+    cleaned = re.sub(r"\[\[([^\]]+)\]\]", r"\1", cleaned)
+    cleaned = re.sub(r"<[^>]+>", " ", cleaned)
+    cleaned = cleaned.replace("}}", "")
+    cleaned = re.sub(r"''+", "", cleaned)
+    names = []
+    for candidate in re.split(r"[\n,;|•]+", cleaned):
+        name = re.sub(r"^[*#\s]+|[\s\]]+$", "", candidate).strip()
+        name = re.sub(r"\s+", " ", name)
+        if name and name.casefold() not in {"and", "unbulleted list"}:
+            names.append(name)
+    return list(dict.fromkeys(names))[:limit]
+
+
+def _wikipedia_infobox_metadata(
+    page_title: str,
+    session: requests.Session,
+) -> dict[str, Any]:
+    try:
+        response = session.get(
+            WIKIPEDIA_PAGE_API,
+            params={
+                "action": "query",
+                "format": "json",
+                "formatversion": 2,
+                "prop": "pageimages|revisions",
+                "piprop": "thumbnail",
+                "pithumbsize": 800,
+                "rvprop": "content",
+                "rvslots": "main",
+                "titles": page_title,
+            },
+            headers=HTTP_HEADERS,
+            timeout=REQUEST_TIMEOUT,
+        )
+        if response.status_code != 200:
+            return {}
+        data = response.json()
+    except (requests.RequestException, ValueError, TypeError):
+        LOGGER.debug("Wikipedia page details lookup failed for %s", page_title)
+        return {}
+    query = data.get("query", {}) if isinstance(data, dict) else {}
+    pages = query.get("pages", []) if isinstance(query, dict) else []
+    if isinstance(pages, dict):
+        pages = list(pages.values())
+    if not isinstance(pages, list) or not pages or not isinstance(pages[0], dict):
+        return {}
+
+    page = pages[0]
+    thumbnail = page.get("thumbnail")
+    output: dict[str, Any] = {
+        "poster_url": _valid_poster_url(
+            thumbnail.get("source") if isinstance(thumbnail, dict) else ""
+        )
+    }
+    revisions = page.get("revisions", [])
+    if not isinstance(revisions, list) or not revisions or not isinstance(revisions[0], dict):
+        return output
+    revision = revisions[0]
+    slots = revision.get("slots", {})
+    main_slot = slots.get("main", {}) if isinstance(slots, dict) else {}
+    wikitext = (
+        main_slot.get("content") or main_slot.get("*")
+        if isinstance(main_slot, dict)
+        else None
+    )
+    if not isinstance(wikitext, str):
+        wikitext = revision.get("*")
+    if not isinstance(wikitext, str):
+        return output
+
+    fields = {
+        "director": ("director", "directed by"),
+        "cast": ("starring", "cast"),
+        "production": ("production company", "production companies", "studio"),
+    }
+    for output_name, keys in fields.items():
+        key_pattern = "|".join(re.escape(key) for key in keys)
+        match = re.search(
+            rf"(?ims)^\|\s*(?:{key_pattern})\s*=\s*(.*?)(?=^\|\s*[^|\n]+\s*=|^\}}\}})",
+            wikitext,
+        )
+        if not match:
+            continue
+        names = _wikitext_names(match.group(1), 4 if output_name == "cast" else 3)
+        if names:
+            output[output_name] = names if output_name == "cast" else names[0]
+    return output
+
+
 def _wikipedia_metadata(
     title: str,
     year: int | None,
     session: requests.Session,
-) -> dict[str, str]:
+) -> dict[str, Any]:
     page_names = [title]
     if year:
         page_names.append(f"{title} ({year} film)")
     page_names.append(f"{title} (film)")
-    best: dict[str, str] = {"poster_url": "", "overview": ""}
+    best: dict[str, Any] = {"poster_url": "", "overview": "", "page_title": ""}
     for page_name in dict.fromkeys(page_names):
         summary = _summary_from_page(page_name, session)
         if not summary:
             continue
+        if not best["page_title"]:
+            best["page_title"] = summary["page_title"]
         if len(summary["overview"]) > len(best["overview"]):
             best["overview"] = summary["overview"]
         if summary["poster_url"]:
             best["poster_url"] = summary["poster_url"]
         if best["poster_url"] and best["overview"]:
+            for key, value in _wikipedia_infobox_metadata(
+                best["page_title"], session
+            ).items():
+                if value:
+                    best[key] = value
             return best
 
     params = {
@@ -146,6 +259,8 @@ def _wikipedia_metadata(
                     summary = _summary_from_page(str(result["title"]), session)
                     if not summary:
                         continue
+                    if not best["page_title"]:
+                        best["page_title"] = summary["page_title"]
                     if not best["poster_url"] and summary["poster_url"]:
                         best["poster_url"] = summary["poster_url"]
                     if not best["overview"] and summary["overview"]:
@@ -154,6 +269,12 @@ def _wikipedia_metadata(
                         break
     except (requests.RequestException, ValueError, TypeError):
         LOGGER.debug("Wikipedia search lookup failed for %s", title)
+    if best["page_title"]:
+        for key, value in _wikipedia_infobox_metadata(
+            best["page_title"], session
+        ).items():
+            if value:
+                best[key] = value
     return best
 
 
@@ -298,32 +419,58 @@ def _fallback_poster(
     title: str,
     year: int | None,
     genres: tuple[str, ...] | list[str] = (),
+    director: str | None = None,
 ) -> str:
-    safe_title = html.escape(_clean_title(title)[:48])
-    safe_year = html.escape(str(year) if year else "GENREGENIE PICK")
-    words = re.findall(r"[A-Za-z0-9]+", _clean_title(title))
-    initials = "".join(word[0] for word in words if word.casefold() not in {"the", "a", "an"})[:2]
-    if not initials:
-        initials = (words[0][0] if words else "G").upper()
-    safe_initials = html.escape(initials.upper())
-    safe_genre = html.escape(str(genres[0])[:24] if genres else "MOVIE PICK")
+    clean_title = _clean_title(title)[:54]
+    words = clean_title.split()
+    title_lines: list[str] = []
+    current_line = ""
+    for word in words:
+        candidate = f"{current_line} {word}".strip()
+        if len(candidate) > 18 and current_line:
+            title_lines.append(current_line)
+            current_line = word
+        else:
+            current_line = candidate
+    if current_line:
+        title_lines.append(current_line)
+    title_lines = title_lines[:3] or ["A film for tonight"]
+    title_markup = "".join(
+        f'<tspan x="300" dy="{0 if index == 0 else 56}">'
+        f'{html.escape(line)}</tspan>'
+        for index, line in enumerate(title_lines)
+    )
+    title_start_y = 580 - (len(title_lines) - 1) * 28
+    safe_year = html.escape(str(year) if year else "YEAR NOT LISTED")
     svg = f"""<svg xmlns="http://www.w3.org/2000/svg" width="600" height="900">
-      <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-        <stop stop-color="#31105f"/><stop offset="1" stop-color="#a855f7"/>
-      </linearGradient></defs>
-      <rect width="600" height="900" fill="#101016"/>
-      <rect x="20" y="20" width="560" height="860" rx="34" fill="url(#g)"/>
-      <circle cx="470" cy="170" r="180" fill="#fff" opacity=".08"/>
-      <text x="300" y="395" text-anchor="middle" fill="#fff" opacity=".94"
-        font-family="Arial,sans-serif" font-size="190" font-weight="700">{safe_initials}</text>
-      <rect x="54" y="646" width="220" height="42" rx="21" fill="#1a1027"
-        stroke="#d8b4fe" stroke-width="2"/>
-      <text x="164" y="674" text-anchor="middle" fill="#e9d5ff"
-        font-family="Arial,sans-serif" font-size="20" font-weight="700">{safe_genre}</text>
-      <text x="54" y="750" fill="white" font-family="Arial,sans-serif"
-        font-size="38" font-weight="700">{safe_title}</text>
-      <text x="54" y="810" fill="#e9d5ff" font-family="Arial,sans-serif"
-        font-size="27">{safe_year} · GENREGENIE</text>
+      <defs>
+        <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
+          <stop stop-color="#211a2d"/><stop offset="1" stop-color="#11131b"/>
+        </linearGradient>
+        <radialGradient id="glow">
+          <stop stop-color="#8959b8" stop-opacity=".24"/>
+          <stop offset="1" stop-color="#8959b8" stop-opacity="0"/>
+        </radialGradient>
+      </defs>
+      <rect width="600" height="900" fill="url(#background)"/>
+      <rect x="22" y="22" width="556" height="856" rx="18"
+        fill="none" stroke="#9e79c2" stroke-opacity=".38" stroke-width="2"/>
+      <circle cx="300" cy="315" r="205" fill="url(#glow)"/>
+      <g fill="none" stroke="#d3b5f3" stroke-linecap="round"
+        stroke-linejoin="round" stroke-width="12" opacity=".82"
+        transform="translate(222 206)">
+        <path d="M12 66h132v110H12z"/>
+        <path d="m12 66 16-52 120 22-16 52"/>
+        <path d="m48 21 25 48m35-40 25 48"/>
+        <path d="M42 111h35m-35 30h62" stroke-width="9"/>
+      </g>
+      <text x="300" y="465" text-anchor="middle" fill="#bba2d2"
+        font-family="Arial,sans-serif" font-size="20" font-weight="700"
+        letter-spacing="3">ARTWORK UNAVAILABLE</text>
+      <text x="300" y="{title_start_y}" text-anchor="middle" fill="#f4effa"
+        font-family="Arial,sans-serif" font-size="44" font-weight="700">{title_markup}</text>
+      <text x="300" y="730" text-anchor="middle" fill="#aaa0b5"
+        font-family="Arial,sans-serif" font-size="24" letter-spacing="2">{safe_year}</text>
     </svg>"""
     encoded = base64.b64encode(svg.encode("utf-8")).decode("ascii")
     return f"data:image/svg+xml;base64,{encoded}"
@@ -341,8 +488,20 @@ def _fallback_details(
         "full_overview": synopsis,
         "runtime": None,
         "rating": None,
+        "director": None,
+        "cast": [],
+        "production": None,
         "source": "generated",
     }
+
+
+def fallback_movie_details(
+    title: str,
+    year: int | None,
+    genres: tuple[str, ...] | list[str] = (),
+) -> dict[str, Any]:
+    """Build local card details without waiting for remote metadata providers."""
+    return _fallback_details(title, year, genres)
 
 
 @st.cache_data(ttl=86400, show_spinner=False)
@@ -362,6 +521,9 @@ def fetch_movie_details(
         "poster_url": "",
         "overview": "",
         "runtime": None,
+        "director": None,
+        "cast": [],
+        "production": None,
     }
     source = "generated"
 
@@ -375,6 +537,9 @@ def fetch_movie_details(
             source = provider
         if not metadata["runtime"] and found.get("runtime"):
             metadata["runtime"] = found["runtime"]
+        for field in ("director", "cast", "production"):
+            if not metadata[field] and found.get(field):
+                metadata[field] = found[field]
 
     with requests.Session() as session:
         session.headers.update(HTTP_HEADERS)
@@ -409,7 +574,12 @@ def fetch_movie_details(
         full_overview = "Synopsis details are temporarily unavailable."
 
     if not _valid_poster_url(metadata["poster_url"]):
-        metadata["poster_url"] = _fallback_poster(clean_title, year, genres)
+        metadata["poster_url"] = _fallback_poster(
+            clean_title,
+            year,
+            genres,
+            str(metadata["director"]) if metadata["director"] else None,
+        )
         if source == "Wikipedia" or source == "iTunes":
             source = "generated poster + " + source
     return {
@@ -418,6 +588,9 @@ def fetch_movie_details(
         "full_overview": full_overview,
         "runtime": metadata["runtime"],
         "rating": None,
+        "director": metadata["director"],
+        "cast": metadata["cast"],
+        "production": metadata["production"],
         "source": source,
     }
 
