@@ -106,13 +106,38 @@ SAFE_POSTER_HOSTS = {
 
 
 def _iter_tmdb_incremental_records():
+    """Load incremental TMDB records from multiple possible formats."""
     for path in TMDB_INCREMENTAL_PATHS:
         if not path.is_file():
             continue
-        state = json.loads(path.read_text(encoding="utf-8"))
-        records = state.get("movies", []) if isinstance(state, dict) else []
-        if isinstance(records, list):
-            yield from (record for record in records if isinstance(record, dict))
+        try:
+            state = json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError) as e:
+            LOGGER.warning("Could not load incremental catalog %s: %s", path, e)
+            continue
+        
+        if not isinstance(state, dict):
+            continue
+        
+        # Try different possible structures
+        records = []
+        
+        # Format 1: Direct "movies" or "results" array
+        if "movies" in state and isinstance(state["movies"], list):
+            records = state["movies"]
+        elif "results" in state and isinstance(state["results"], list):
+            records = state["results"]
+        
+        # Format 2: Nested structure with categories (trending_today, changed_movies, etc.)
+        else:
+            for key, value in state.items():
+                if isinstance(value, dict) and "results" in value and isinstance(value["results"], list):
+                    records.extend(value["results"])
+        
+        # Yield each valid movie record
+        for record in records:
+            if isinstance(record, dict):
+                yield record
 
 
 def _linked_tmdb_ids() -> set[int]:
