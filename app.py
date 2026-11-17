@@ -570,9 +570,10 @@ def _start_recommendations(catalog: pd.DataFrame) -> None:
     selected_movies = [
         int(movie_id) for movie_id in st.session_state.get("loved_movies", [])[:3]
     ]
+    filter_cast = st.session_state.get("filter_cast", "")
     upload = st.session_state.get("uploaded_file")
-    if not prompt and not selected_genres and era == "Any Era" and not selected_movies and not upload:
-        st.warning("Pick at least one vibe, era, movie, or reference before revealing your picks.")
+    if not prompt and not selected_genres and era == "Any Era" and not selected_movies and not upload and not filter_cast:
+        st.warning("Pick at least one vibe, era, movie, actor, or reference before revealing your picks.")
         return
 
     seed_ids = set(selected_movies)
@@ -631,7 +632,7 @@ def _start_recommendations(catalog: pd.DataFrame) -> None:
     st.session_state.pop("selected_movie_detail", None)
     st.session_state["shuffle_seed"] = 0
     st.session_state["page"] = "Recommendations"
-    st.rerun()
+    st.session_state["_recommendations_ready"] = True
 
 
 def _compute_recommendations(
@@ -649,6 +650,7 @@ def _compute_recommendations(
     lambda_value: float,
     shuffle_seed: int,
     similarity_threshold: int | None,
+    filter_cast: str = "",
 ) -> list[dict[str, Any]]:
     ranker_parameters = inspect.signature(rank_recommendations).parameters
     ranker_accepts_kwargs = any(
@@ -711,6 +713,18 @@ def _compute_recommendations(
             if int(movie["match_pct"]) >= similarity_threshold
             and float(movie["predicted_rating"]) >= minimum_rating
         ]
+    
+    # Apply cast filter if specified
+    if filter_cast.strip():
+        cast_lower = filter_cast.strip().lower()
+        filtered_pool = []
+        for movie in recommendation_pool:
+            cast = str(movie.get("cast", "")).lower()
+            if cast_lower in cast and cast:
+                filtered_pool.append(movie)
+        # Use filtered results if any match, otherwise fall back to unfiltered
+        recommendation_pool = filtered_pool if filtered_pool else recommendation_pool
+    
     return (
         random.Random(shuffle_seed).sample(
             recommendation_pool[:30],
@@ -852,21 +866,66 @@ def _render_discover(catalog: pd.DataFrame, movie_labels: dict[int, str]) -> Non
         )
         movie_column, upload_column, prompt_column = st.columns([1.2, 1, 1])
         with movie_column:
-            st.multiselect(
-                "Movies you already love (up to 3)",
-                options=list(movie_labels),
-                format_func=lambda movie_id: movie_labels.get(int(movie_id), str(movie_id)),
-                max_selections=3,
-                key="loved_movies",
-                placeholder="Search movie titles",
-            )
+            # Use a search-based approach for movie selection
+            col1, col2 = st.columns([0.75, 0.25])
+            
+            with col1:
+                movie_search = st.text_input(
+                    "Search movie titles",
+                    key="movie_search_input",
+                    placeholder="e.g., Inception, The Matrix...",
+                    help="Type a movie title to add (up to 3)",
+                )
+            
+            with col2:
+                if st.button("Add", key="add_movie_btn", use_container_width=True):
+                    if movie_search.strip():
+                        # Find matching movies
+                        search_lower = movie_search.strip().lower()
+                        matches = [
+                            mid for mid, title in movie_labels.items()
+                            if search_lower in title.lower()
+                        ]
+                        
+                        if matches:
+                            mid = matches[0]  # Take first match
+                            current = st.session_state.get("loved_movies", [])
+                            if mid not in current and len(current) < 3:
+                                st.session_state["loved_movies"] = current + [mid]
+                                st.session_state["movie_search_input"] = ""  # Clear input
+                                st.rerun()
+                            elif len(current) >= 3:
+                                st.warning("Maximum 3 movies selected")
+                            else:
+                                st.info("Movie already added")
+                        else:
+                            st.error(f"No movies found matching '{movie_search}'")
+            
+            # Display selected movies
+            selected = st.session_state.get("loved_movies", [])
+            if selected:
+                st.caption("Selected:")
+                for mid in selected:
+                    title = movie_labels.get(mid, f"Movie {mid}")
+                    col_title, col_remove = st.columns([0.85, 0.15])
+                    with col_title:
+                        st.caption(f"• {title}")
+                    with col_remove:
+                        if st.button("✕", key=f"remove_movie_{mid}", use_container_width=True):
+                            st.session_state["loved_movies"] = [m for m in selected if m != mid]
+                            st.rerun()
         with upload_column:
-            st.file_uploader(
-                "Drop a poster or watchlist CSV",
-                type=["jpg", "jpeg", "png", "csv"],
-                key="uploaded_file",
-                help="JPG/PNG or cleaned-schema CSV, maximum 5 MB.",
+            # Filter by actor/cast
+            cast_search = st.text_input(
+                "Filter by actor",
+                key="cast_search_input",
+                placeholder="e.g., Tom Hanks...",
+                help="Filter recommendations by actor name",
             )
+            if cast_search.strip():
+                st.session_state["filter_cast"] = cast_search.strip()
+            else:
+                st.session_state.pop("filter_cast", None)
         with prompt_column:
             st.text_input(
                 "Custom keywords (optional)",
@@ -979,6 +1038,7 @@ def _render_recommendations(
     seen_movie_ids = {
         int(movie_id) for movie_id in st.session_state.get("recommendation_history", [])
     }
+    filter_cast = st.session_state.get("filter_cast", "")
     catalog_version = tuple(
         path.stat().st_mtime_ns if path.is_file() else 0
         for path in (MOVIES_PATH, LINKS_PATH) + TMDB_SOURCE_PATHS
@@ -999,6 +1059,7 @@ def _render_recommendations(
         float(lambda_value),
         shuffle_seed,
         int(similarity_threshold) if similarity_threshold is not None else None,
+        filter_cast,
     )
     cache_entry = st.session_state.get("_recommendation_cache", {})
     try:
@@ -1024,6 +1085,7 @@ def _render_recommendations(
                     if similarity_threshold is not None
                     else None
                 ),
+                filter_cast=filter_cast,
             )
             st.session_state["_recommendation_cache"] = {
                 "key": cache_key,
@@ -1648,9 +1710,8 @@ with st.sidebar:
                     and st.session_state["page"] == "Discover"
                 ):
                     _start_recommendations(catalog)
-                else:
+                elif st.session_state["page"] != page_name:
                     st.session_state["page"] = page_name
-                    st.rerun()
 
     st.markdown("---")
     st.caption("Set your rating, list size, and discovery balance on the Discover page.")
