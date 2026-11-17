@@ -280,6 +280,15 @@ def prepare_catalog(movies: pd.DataFrame) -> pd.DataFrame:
     catalog["year"] = pd.array([year for _, year in title_parts], dtype="Int64")
     catalog["display_title"] = [title for title, _ in title_parts]
     catalog["formatted_title"] = catalog["title"].map(format_movie_title)
+    catalog["_cast_norm"] = (
+        catalog["cast"].map(
+            lambda value: normalize_search_text(value)
+            if isinstance(value, str)
+            else ""
+        )
+        if "cast" in catalog
+        else pd.Series("", index=catalog.index, dtype="string")
+    )
 
     rating_column = _find_column(
         list(catalog.columns),

@@ -8,6 +8,7 @@ import pandas as pd
 import recommendation_engine
 from streamlit.testing.v1 import AppTest
 
+from app import _compute_recommendations
 from input_validation import validate_watchlist_csv
 from recommendation_engine import prepare_catalog
 from tmdb_catalog import TMDB_MOVIE_ID_OFFSET
@@ -115,6 +116,39 @@ def _stub_movie_lens_ranker(monkeypatch):
         ]
 
     monkeypatch.setattr(recommendation_engine, "rank_recommendations", rank_movies)
+
+
+def test_actor_filter_is_applied_before_genre_ranking():
+    catalog = prepare_catalog(
+        pd.DataFrame(
+            [
+                (1, "Brad Pitt Action (2020)", "Action", "Brad Pitt"),
+                (2, "Unrelated Action (2020)", "Action", "Another Actor"),
+                (3, "Brad Pitt Comedy (2020)", "Comedy", "Brad Pitt"),
+            ],
+            columns=["movieId", "title", "genres", "cast"],
+        )
+    )
+
+    recommendations = _compute_recommendations(
+        catalog=catalog,
+        model={"available": False},
+        prompt="",
+        mood_labels=[],
+        selected_genres=["Action"],
+        era="Any Era",
+        seed_ids=set(),
+        excluded_ids=set(),
+        seen_movie_ids=set(),
+        top_n=10,
+        minimum_rating=0.5,
+        lambda_value=1.0,
+        shuffle_seed=0,
+        similarity_threshold=None,
+        filter_cast="bradd pitt",
+    )
+
+    assert [movie["movie_id"] for movie in recommendations] == [1]
 
 
 def test_valid_text_query_renders_recommendations(monkeypatch):
@@ -336,6 +370,7 @@ def test_active_filters_are_the_genres_rendered_and_ranked(monkeypatch):
         "era": "Any Era",
         "loved_movies": [],
         "keywords": "",
+        "cast": "",
     }
     assert ranker_calls[-1]["selected_genres"] == ["Romance", "Drama"]
     assert any(

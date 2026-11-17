@@ -9,6 +9,7 @@ import json
 import logging
 import pickle
 import random
+from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -29,6 +30,7 @@ from movie_metadata import fallback_movie_details, fetch_movie_details_batch
 from recommendation_engine import (
     detect_poster_movie,
     find_prompt_movie_ids,
+    normalize_search_text,
     parse_preferences,
     prepare_catalog,
     rank_recommendations,
@@ -623,6 +625,7 @@ def _start_recommendations(catalog: pd.DataFrame) -> None:
         "era": era,
         "loved_movies": sorted(seed_ids),
         "keywords": prompt,
+        "cast": filter_cast,
     }
     st.session_state["discovery_request"] = {
         "excluded_ids": excluded_ids,
@@ -633,6 +636,7 @@ def _start_recommendations(catalog: pd.DataFrame) -> None:
     st.session_state["shuffle_seed"] = 0
     st.session_state["page"] = "Recommendations"
     st.session_state["_recommendations_ready"] = True
+    st.rerun()
 
 
 def _compute_recommendations(
@@ -652,6 +656,41 @@ def _compute_recommendations(
     similarity_threshold: int | None,
     filter_cast: str = "",
 ) -> list[dict[str, Any]]:
+    filtered_catalog = catalog
+    if filter_cast.strip():
+        cast_query = normalize_search_text(filter_cast)
+        if not cast_query:
+            return []
+
+        cast_values = catalog["_cast_norm"].fillna("").astype("string")
+        exact_matches = cast_values.str.contains(
+            cast_query,
+            regex=False,
+            na=False,
+        )
+
+        def cast_matches(normalized_cast: Any) -> bool:
+            if not isinstance(normalized_cast, str) or not normalized_cast:
+                return False
+            if cast_query in normalized_cast:
+                return True
+            cast_tokens = normalized_cast.split()
+            return all(
+                any(
+                    SequenceMatcher(None, query_token, cast_token).ratio() >= 0.8
+                    for cast_token in cast_tokens
+                )
+                for query_token in cast_query.split()
+            )
+
+        filtered_catalog = (
+            catalog[exact_matches]
+            if exact_matches.any()
+            else catalog[cast_values.map(cast_matches)]
+        ).reset_index(drop=True)
+        if filtered_catalog.empty:
+            return []
+
     ranker_parameters = inspect.signature(rank_recommendations).parameters
     ranker_accepts_kwargs = any(
         parameter.kind is inspect.Parameter.VAR_KEYWORD
@@ -677,7 +716,7 @@ def _compute_recommendations(
         ranker_arguments["minimum_match_pct"] = similarity_threshold
 
     predictions = _rating_predictions(
-        catalog=catalog,
+        catalog=filtered_catalog,
         model=model,
         prompt=prompt,
         mood_labels=mood_labels,
@@ -685,17 +724,17 @@ def _compute_recommendations(
         lambda_val=lambda_value,
     )
     ranked_candidates = rank_recommendations(
-        catalog=catalog,
+        catalog=filtered_catalog,
         predictions=predictions,
         prompt=prompt,
         mood_labels=ranker_mood_labels,
         seed_movie_ids=seed_ids,
         excluded_movie_ids=excluded_ids,
         top_n=(
-            min(30, len(catalog))
+            min(30, len(filtered_catalog))
             if shuffle_seed and not ranker_supports_shuffle
             else (
-                len(catalog)
+                len(filtered_catalog)
                 if similarity_threshold is not None
                 and not ranker_supports_match_threshold
                 else top_n
@@ -713,17 +752,6 @@ def _compute_recommendations(
             if int(movie["match_pct"]) >= similarity_threshold
             and float(movie["predicted_rating"]) >= minimum_rating
         ]
-    
-    # Apply cast filter if specified
-    if filter_cast.strip():
-        cast_lower = filter_cast.strip().lower()
-        filtered_pool = []
-        for movie in recommendation_pool:
-            cast = str(movie.get("cast", "")).lower()
-            if cast_lower in cast and cast:
-                filtered_pool.append(movie)
-        # Use filtered results if any match, otherwise fall back to unfiltered
-        recommendation_pool = filtered_pool if filtered_pool else recommendation_pool
     
     return (
         random.Random(shuffle_seed).sample(
@@ -1038,7 +1066,9 @@ def _render_recommendations(
     seen_movie_ids = {
         int(movie_id) for movie_id in st.session_state.get("recommendation_history", [])
     }
-    filter_cast = st.session_state.get("filter_cast", "")
+    filter_cast = str(
+        active_filters.get("cast", st.session_state.get("filter_cast", ""))
+    ).strip()
     catalog_version = tuple(
         path.stat().st_mtime_ns if path.is_file() else 0
         for path in (MOVIES_PATH, LINKS_PATH) + TMDB_SOURCE_PATHS
@@ -1156,6 +1186,7 @@ def _render_recommendations(
         f"Showing {len(recommendations)} picks",
         "Genres: " + (", ".join(selected_genres) if selected_genres else "Any"),
         "Era: " + (profile.era_label or era),
+        *([f"Actor: {filter_cast}"] if filter_cast else []),
         (
             "Min Rating: Any"
             if minimum_rating <= 0.5

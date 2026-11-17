@@ -225,7 +225,7 @@ Our feature engineering pipeline (\texttt{03\_feature\_strategy.py}) implements 
 \begin{figure}[H]
     \centering
     \includegraphics[width=0.75\textwidth]{figures/rating_distribution.png}
-    \caption{Distribution of user ratings shows positive skew (users tend to rate movies they like)}
+    \caption{Distribution of MovieLens user ratings (the user-level training source)}
     \label{fig:rating_dist}
 \end{figure}
 
@@ -235,17 +235,17 @@ Figure \ref{fig:rating_dist} reveals that ratings follow a left-skewed distribut
 \begin{figure}[H]
     \centering
     \includegraphics[width=0.75\textwidth]{figures/genre_distribution.png}
-    \caption{Drama and Comedy dominate the dataset, indicating potential class imbalance}
+    \caption{Top genres across the combined MovieLens and TMDB catalog}
     \label{fig:genre_dist}
 \end{figure}
 
-The genre distribution (Figure \ref{fig:genre_dist}) shows strong imbalance, with Drama and Comedy comprising $>$40\% of entries. This necessitates stratified sampling or class weighting in future model training.
+The genre distribution (Figure \ref{fig:genre_dist}) describes the combined discovery catalog, including the TMDB full loads and incremental additions. It is separate from the MovieLens rating matrix used to train the collaborative model.
 
 \subsubsection{User Activity Patterns}
 \begin{figure}[H]
     \centering
     \includegraphics[width=0.75\textwidth]{figures/user_activity.png}
-    \caption{User activity follows power-law distribution (few highly active users, many sparse users)}
+    \caption{MovieLens user activity follows a long-tail distribution}
     \label{fig:user_activity}
 \end{figure}
 
@@ -265,11 +265,11 @@ The correlation analysis (Figure \ref{fig:correlation}) shows weak correlations 
 \begin{figure}[H]
     \centering
     \includegraphics[width=0.75\textwidth]{figures/popularity_vs_rating.png}
-    \caption{Weak correlation between popularity (rating count) and quality (average rating)}
+    \caption{Catalog popularity versus average rating: MovieLens rating counts and TMDB vote counts}
     \label{fig:pop_vs_rating}
 \end{figure}
 
-Figure \ref{fig:pop_vs_rating} reveals that popular movies (high rating counts) do not necessarily receive higher average ratings, suggesting that mainstream appeal differs from critical quality—an insight valuable for diversifying recommendations.
+Figure \ref{fig:pop_vs_rating} compares MovieLens rating counts and TMDB vote counts with ratings on a common five-point scale; neither source shows popularity alone as a sufficient quality signal.
 
 \section{Technical Implementation Summary}
 
