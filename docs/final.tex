@@ -279,7 +279,7 @@ Applied to: rating count, average rating (zero mean, unit variance)
 \begin{figure}[H]
     \centering
     \includegraphics[width=0.75\textwidth]{figures/rating_distribution.png}
-    \caption{User ratings follow left-skewed distribution, indicating positive rating bias (users preferentially rate movies they enjoy)}
+    \caption{Distribution of MovieLens user ratings (the user-level training source)}
     \label{fig:rating_dist}
 \end{figure}
 
@@ -289,17 +289,17 @@ Mean rating $\approx 3.5/5.0$ with selection bias—users rate content they like
 \begin{figure}[H]
     \centering
     \includegraphics[width=0.75\textwidth]{figures/genre_distribution.png}
-    \caption{Drama and Comedy dominate catalog (40\% of entries), indicating class imbalance requiring stratified sampling}
+    \caption{Top genres across the combined MovieLens and TMDB catalog}
     \label{fig:genre_dist}
 \end{figure}
 
-Genre imbalance (Drama, Comedy $>$40\%) necessitates stratified evaluation and genre-aware bias checking.
+This catalog-level view includes the TMDB full-load and incremental records used for discovery; the collaborative model itself remains trained on MovieLens ratings.
 
 \subsubsection{User Activity Patterns}
 \begin{figure}[H]
     \centering
     \includegraphics[width=0.75\textwidth]{figures/user_activity.png}
-    \caption{Power-law distribution: few highly-active users dominate rating volume; majority are sparse}
+    \caption{MovieLens user activity follows a long-tail distribution}
     \label{fig:user_activity}
 \end{figure}
 
@@ -319,11 +319,11 @@ Weak feature correlations confirm independent signal contribution; minimal redun
 \begin{figure}[H]
     \centering
     \includegraphics[width=0.75\textwidth]{figures/popularity_vs_rating.png}
-    \caption{Weak correlation between popularity (rating count) and quality (average rating)}
+    \caption{Catalog popularity versus average rating: MovieLens rating counts and TMDB vote counts}
     \label{fig:pop_vs_rating}
 \end{figure}
 
-Popular movies do not necessarily receive higher ratings—mainstream appeal differs from critical quality, enabling diverse recommendations.
+The combined view compares MovieLens rating counts and TMDB vote counts with ratings on a common five-point scale; popularity alone is not a sufficient quality signal.
 
 % =========================================================
 % PART 3: MODEL ARCHITECTURE & TRAINING

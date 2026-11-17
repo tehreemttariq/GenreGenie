@@ -1,8 +1,15 @@
-import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
+import json
 import os
+from pathlib import Path
+import sys
+
+import matplotlib.pyplot as plt
+import pandas as pd
+import seaborn as sns
 from sklearn.preprocessing import StandardScaler, MinMaxScaler, LabelEncoder
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from tmdb_catalog import TMDB_GENRE_NAMES, TMDB_MOVIE_ID_OFFSET
 
 LILAC = '#C8A2C8'
 PURPLE = '#8E5B9A'
@@ -110,7 +117,91 @@ def engineer_movie_features(movies_df, ratings_df):
     return movies_df
 
 
-def generate_eda_plots(movies_df, ratings_df, user_features):
+def load_catalog_eda_data(movies_df):
+    """Load MovieLens and current TMDB catalog rows for catalog-level figures."""
+    catalog = movies_df[["movieId", "genres"]].copy()
+    catalog["source"] = "MovieLens"
+    popularity = (
+        movies_df[["movieId", "num_ratings", "avg_rating"]]
+        .rename(columns={"num_ratings": "popularity", "avg_rating": "rating"})
+        .assign(source="MovieLens")
+    )
+
+    tmdb_rows = []
+    raw_paths = (
+        Path("data/raw/full_load_2005_2014.json"),
+        Path("data/raw/full_load.json"),
+        Path("data/raw/tmdb_incremental_catalog.json"),
+    )
+    for path in raw_paths:
+        if not path.is_file():
+            continue
+        with path.open(encoding="utf-8") as source:
+            payload = json.load(source)
+        records = payload.get("results", payload.get("movies", []))
+        for record in records:
+            try:
+                tmdb_id = int(record.get("id", 0))
+                vote_average = float(record.get("vote_average", 0.0))
+                vote_count = int(record.get("vote_count", 0))
+            except (TypeError, ValueError):
+                continue
+            if tmdb_id <= 0 or vote_count < 0:
+                continue
+            genres = record.get("genres") or [
+                {"id": genre_id}
+                for genre_id in record.get("genre_ids", [])
+            ]
+            genre_names = [
+                genre.get("name") or TMDB_GENRE_NAMES.get(genre.get("id"))
+                for genre in genres
+                if isinstance(genre, dict)
+            ]
+            tmdb_rows.append(
+                {
+                    "movieId": TMDB_MOVIE_ID_OFFSET + tmdb_id,
+                    "genres": "|".join(
+                        dict.fromkeys(
+                            genre for genre in genre_names if genre
+                        )
+                    ),
+                    "popularity": vote_count,
+                    "rating": vote_average / 2,
+                    "source": "TMDB",
+                }
+            )
+
+    tmdb = pd.DataFrame(tmdb_rows).drop_duplicates("movieId")
+    links_path = Path("data/raw/links.csv")
+    if not tmdb.empty and links_path.is_file():
+        linked_tmdb_ids = set(
+            pd.to_numeric(
+                pd.read_csv(links_path, usecols=["tmdbId"])["tmdbId"],
+                errors="coerce",
+            )
+            .dropna()
+            .astype(int)
+        )
+        tmdb = tmdb[
+            ~tmdb["movieId"].sub(TMDB_MOVIE_ID_OFFSET).isin(linked_tmdb_ids)
+        ]
+    if not tmdb.empty:
+        catalog = pd.concat(
+            [catalog, tmdb[["movieId", "genres", "source"]]],
+            ignore_index=True,
+        )
+        popularity = pd.concat(
+            [popularity, tmdb[["movieId", "popularity", "rating", "source"]]],
+            ignore_index=True,
+        )
+    return catalog.merge(
+        popularity[["movieId", "popularity", "rating"]],
+        on="movieId",
+        how="left",
+    )
+
+
+def generate_eda_plots(movies_df, ratings_df, user_features, catalog_data):
     print("\ngenerating plots")
 
     os.makedirs('docs/figures', exist_ok=True)
@@ -128,12 +219,23 @@ def generate_eda_plots(movies_df, ratings_df, user_features):
 
     # 2. genre distribution
     plt.figure(figsize=(12, 6))
-    movies_df['primary_genre'].value_counts().head(10).plot(
+    catalog_genres = (
+        catalog_data["genres"]
+        .fillna("")
+        .str.split("|")
+        .explode()
+        .loc[lambda values: values.ne("")]
+    )
+    catalog_genres.value_counts().head(10).plot(
         kind='bar',
         color=[LILAC, PURPLE, DEEP_PURPLE, DARK_PURPLE] * 3,
         edgecolor='white',
     )
-    plt.title('Top 10 Movie Genres', fontsize=16, fontweight='bold')
+    plt.title(
+        'Top 10 Genres in MovieLens + TMDB Catalog',
+        fontsize=16,
+        fontweight='bold',
+    )
     plt.xlabel('Genre', fontsize=12)
     plt.ylabel('Count', fontsize=12)
     plt.xticks(rotation=45, ha='right')
@@ -174,18 +276,33 @@ def generate_eda_plots(movies_df, ratings_df, user_features):
 
     # 5. popularity vs rating
     plt.figure(figsize=(10, 6))
-    rated_movies = movies_df[movies_df['num_ratings'] > 0]
-    sample = rated_movies.sample(min(1000, len(rated_movies)))
-
-    plt.scatter(
-        sample['num_ratings'], sample['avg_rating'],
-        alpha=0.5, color=DEEP_PURPLE
-    )
-    plt.title('Movie Popularity vs Average Rating',
+    for source, color in (
+        ("MovieLens", DEEP_PURPLE),
+        ("TMDB", PURPLE),
+    ):
+        source_data = catalog_data[
+            (catalog_data["source"] == source)
+            & (catalog_data["popularity"] > 0)
+        ]
+        if source_data.empty:
+            continue
+        sample = source_data.sample(
+            min(1000, len(source_data)),
+            random_state=42,
+        )
+        plt.scatter(
+            sample['popularity'],
+            sample['rating'],
+            alpha=0.35,
+            color=color,
+            label=source,
+        )
+    plt.title('Catalog Popularity vs Average Rating',
               fontsize=16, fontweight='bold')
-    plt.xlabel('Number of Ratings', fontsize=12)
+    plt.xlabel('Rating Count / TMDB Votes', fontsize=12)
     plt.ylabel('Average Rating', fontsize=12)
-    plt.xlim(0, sample['num_ratings'].quantile(0.95))
+    plt.xlim(0, catalog_data['popularity'].quantile(0.95))
+    plt.legend()
     plt.grid(alpha=0.3)
     plt.savefig('docs/figures/popularity_vs_rating.png',
                 dpi=300, bbox_inches='tight')
@@ -221,8 +338,9 @@ def main():
 
     user_features = engineer_user_features(ratings_df)
     movies_df = engineer_movie_features(movies_df, ratings_df)
+    catalog_data = load_catalog_eda_data(movies_df)
 
-    generate_eda_plots(movies_df, ratings_df, user_features)
+    generate_eda_plots(movies_df, ratings_df, user_features, catalog_data)
     save_engineered_features(movies_df, user_features)
 
     print("\nfeature engineering complete")
