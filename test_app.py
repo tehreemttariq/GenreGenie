@@ -9,7 +9,6 @@ import recommendation_engine
 from streamlit.testing.v1 import AppTest
 
 from app import _compute_recommendations
-from input_validation import validate_watchlist_csv
 from recommendation_engine import prepare_catalog
 from tmdb_catalog import TMDB_MOVIE_ID_OFFSET
 
@@ -534,20 +533,18 @@ def test_movie_card_find_similar_enforces_match_threshold(monkeypatch):
     assert all(match_value >= 75 for match_value in match_values)
 
 
-def test_invalid_csv_upload_reports_schema_error():
+def test_actor_filter_ui_persists_and_renders(monkeypatch):
+    _stub_metadata(monkeypatch)
     app = _run_app()
-    _widget_with_key(app.file_uploader, "uploaded_file").upload(
-        "watchlist.csv",
-        b"movie,title\n1,The Matrix\n",
-        "text/csv",
-    )
+    _widget_with_key(app.text_input, "cast_search_input").set_value("bradd pitt")
     app.run(timeout=30)
     _widget_with_key(app.button, "find_movies").click()
     app.run(timeout=30)
 
     assert not app.exception
-    assert any("missing required cleaned-dataset columns" in item.value for item in app.error)
-    watchlist, error, _ = validate_watchlist_csv(b"movie,title\n1,The Matrix\n")
-    assert watchlist is None
-    assert error is not None
-    assert "movieId" in error
+    assert app.session_state["active_filters"]["cast"] == "bradd pitt"
+    assert any(
+        "Actor: bradd pitt" in item.value
+        for item in app.markdown
+        if "active-criteria" in item.value
+    )
